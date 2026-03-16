@@ -1,0 +1,47 @@
+#sudo apt update && sudo apt install -y libpq-dev postgresql-client build-essential
+
+# Core
+Django==4.2.16
+djangorestframework==3.15.2
+
+# Auth
+djangorestframework-simplejwt==5.3.1
+
+# Admin
+django-unfold==0.40.0
+django-import-export==4.1.1
+
+# Database
+psycopg2-binary==2.9.10
+
+# Cache / Queue
+django-redis==5.4.0
+redis==5.2.1
+celery==5.4.0
+django-celery-beat==2.7.0
+django-celery-results==2.5.1
+flower==2.0.1
+
+# API
+django-cors-headers==4.4.0
+django-filter==24.3
+drf-spectacular==0.27.2
+
+# HTTP client
+requests==2.32.3
+urllib3==2.2.3
+
+# Server
+gunicorn==22.0.0
+whitenoise==6.7.0
+
+# Config
+python-decouple==3.8
+
+# File parsing
+openpyxl==3.1.5
+xlrd==2.0.1
+python-dateutil==2.9.0
+
+# Security
+django-axes==6.5.0
