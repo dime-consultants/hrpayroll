@@ -117,8 +117,8 @@ services:
     image: nginx:1.25-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "7070:80"
+      - "9443:443"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
