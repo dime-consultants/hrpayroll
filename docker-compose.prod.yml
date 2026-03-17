@@ -14,12 +14,8 @@ services:
     env_file: .env.prod
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${DB_NAME:-hr_payroll}
-      POSTGRES_USER: ${DB_USER:-hr_payroll_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hr_payroll_user} -d ${DB_NAME:-hr_payroll}"]
+      test: ["CMD-SHELL", "pg_isready -U hr_payroll_user -d hr_payroll"]
       interval: 10s
       timeout: 5s
       retries: 5
