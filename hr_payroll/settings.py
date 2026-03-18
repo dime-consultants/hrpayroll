@@ -202,17 +202,20 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+
 # ── LMS ──────────────────────────────────────────────────────
-LMS_BASE_URL = config('LMS_BASE_URL', default='https://back.dimeapp.co.ke')
-LMS_SERVICE_USERNAME = config('LMS_SERVICE_USERNAME', default='')
-LMS_SERVICE_PASSWORD = config('LMS_SERVICE_PASSWORD', default='')
-LMS_API_KEY = config('LMS_API_KEY', default='')
-LMS_TIMEOUT = config('LMS_TIMEOUT', default=60, cast=int)
-LMS_RETRY_MAX = config('LMS_RETRY_MAX', default=3, cast=int)
-LMS_RETRY_BACKOFF = config('LMS_RETRY_BACKOFF', default=2, cast=int)
-LMS_REQUEST_POOL_SIZE = config('LMS_REQUEST_POOL_SIZE', default=10, cast=int)
+LMS_BASE_URL             = config('LMS_BASE_URL', default='https://back.dimeapp.co.ke')
+LMS_CONSUMER_KEY         = config('LMS_CONSUMER_KEY', default='')
+LMS_CONSUMER_SECRET      = config('LMS_CONSUMER_SECRET', default='')
+LMS_TOKEN_URL            = config('LMS_TOKEN_URL', default='https://back.dimeapp.co.ke/api/partner/token/')
+LMS_SERVICE_USERNAME     = config('LMS_SERVICE_USERNAME', default='')
+LMS_SERVICE_PASSWORD     = config('LMS_SERVICE_PASSWORD', default='')
+LMS_TIMEOUT              = config('LMS_TIMEOUT', default=60, cast=int)
+LMS_RETRY_MAX            = config('LMS_RETRY_MAX', default=3, cast=int)
+LMS_RETRY_BACKOFF        = config('LMS_RETRY_BACKOFF', default=2, cast=int)
+LMS_REQUEST_POOL_SIZE    = config('LMS_REQUEST_POOL_SIZE', default=10, cast=int)
 LMS_REQUEST_POOL_MAXSIZE = config('LMS_REQUEST_POOL_MAXSIZE', default=20, cast=int)
-IDEMPOTENCY_KEY_TTL = 60 * 60 * 24  # 24 hours
+IDEMPOTENCY_KEY_TTL      = 60 * 60 * 24  # 24 hours
 
 # ── CORS ─────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = config(
