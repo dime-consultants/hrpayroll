@@ -30,7 +30,7 @@ class Command(BaseCommand):
 
         try:
             resp = _get_session().get(
-                f'{settings.LMS_BASE_URL}/api/customer/checkoff-organizations/',
+                f'{settings.LMS_BASE_URL}/api/partner/checkoff-organizations/',
                 headers=_headers(),
                 timeout=settings.LMS_TIMEOUT,
             )
