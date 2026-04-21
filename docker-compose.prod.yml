@@ -52,9 +52,7 @@ services:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: sh /app/docker/entrypoint.prod.sh     # <-- Clean!
     volumes:
-      - .:/app                          # Mount the whole project so script is available
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - logs_volume:/app/logs
