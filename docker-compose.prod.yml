@@ -109,7 +109,8 @@ services:
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - /etc/letsencrypt/live/hr.dimeapp.co.ke:/etc/nginx/certs:ro   # Correct cert mount
+      #- /etc/letsencrypt/live/hr.dimeapp.co.ke:/etc/nginx/certs:ro   # Correct cert mount
+      - /etc/letsencrypt:/etc/nginx/certs:ro
       - /var/www/certbot:/var/www/certbot:ro
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/media:ro
