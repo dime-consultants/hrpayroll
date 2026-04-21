@@ -1,5 +1,3 @@
-version: '3.9'
-
 x-app-env: &app-env
   env_file: .env.prod
   depends_on:
@@ -30,10 +28,7 @@ services:
     restart: unless-stopped
     env_file: .env.prod
     command: >
-      sh -c 'redis-server
-        --maxmemory 256mb
-        --maxmemory-policy allkeys-lru
-        --requirepass "$$REDIS_PASSWORD"'
+      sh -c 'redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"'
     volumes:
       - redis_data:/data
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -113,8 +108,8 @@ services:
       - "9443:443"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt/live/hr.dimeapp.co.ke:/etc/nginx/certs:ro   # Correct cert mount
       - /var/www/certbot:/var/www/certbot:ro
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/media:ro
