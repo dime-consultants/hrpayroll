@@ -37,7 +37,7 @@ COPY . .
 
 # Create necessary directories and fix permissions
 RUN mkdir -p /app/staticfiles /app/media /app/logs && \
-    chown -r appuser:appuser /app
+    chown -R appuser:appuser /app
 
 # Copy and make entrypoint executable
 COPY docker/entrypoint.prod.sh /app/docker/entrypoint.prod.sh
