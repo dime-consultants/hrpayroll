@@ -30,9 +30,9 @@ services:
     restart: unless-stopped
     env_file: .env.prod
     command: >
-      sh -c 'redis-server 
-        --maxmemory 256mb 
-        --maxmemory-policy allkeys-lru 
+      sh -c 'redis-server
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
         --requirepass "$$REDIS_PASSWORD"'
     volumes:
       - redis_data:/data
@@ -53,30 +53,35 @@ services:
     restart: unless-stopped
     <<: *app-env
     command: >
-      sh -c "
-        echo '==> Waiting for DB...' &&
-        until python -c '
-import psycopg2, os
-psycopg2.connect(
-    dbname=os.environ[\"DB_NAME\"],
-    user=os.environ[\"DB_USER\"],
-    password=os.environ[\"DB_PASSWORD\"],
-    host=os.environ[\"DB_HOST\"],
-    port=os.environ.get(\"DB_PORT\", \"5432\")
-)
-' 2>/dev/null; do 
-          echo ' retrying...'; 
-          sleep 2; 
+      sh -c '
+        echo "==> Waiting for DB..." &&
+        until python -c "
+import psycopg2, os, time
+try:
+    psycopg2.connect(
+        dbname=os.environ[\"DB_NAME\"],
+        user=os.environ[\"DB_USER\"],
+        password=os.environ[\"DB_PASSWORD\"],
+        host=os.environ[\"DB_HOST\"],
+        port=os.environ.get(\"DB_PORT\", \"5432\")
+    )
+    print(\"DB connection successful\")
+except Exception as e:
+    print(\"DB not ready yet:\", e)
+    exit(1)
+" 2>/dev/null; do
+          echo "  retrying...";
+          sleep 2;
         done &&
-        echo '==> DB ready.' &&
-        echo '==> Creating migrations...' &&
+        echo "==> DB ready." &&
+        echo "==> Creating migrations..." &&
         python manage.py makemigrations base organizations payroll repayments --noinput &&
-        echo '==> Running migrations...' &&
+        echo "==> Running migrations..." &&
         python manage.py migrate --noinput &&
-        echo '==> Collecting static...' &&
+        echo "==> Collecting static..." &&
         python manage.py collectstatic --noinput --clear &&
-        echo '==> Creating superuser...' &&
-        python manage.py shell -c '
+        echo "==> Creating superuser..." &&
+        python manage.py shell -c "
 from django.contrib.auth import get_user_model
 import os
 User = get_user_model()
@@ -89,10 +94,10 @@ if not User.objects.filter(username=\"admin\").exists():
     print(\"Superuser created\")
 else:
     print(\"Superuser already exists\")
-' &&
-        echo '==> Syncing organizations...' &&
+" &&
+        echo "==> Syncing organizations..." &&
         python manage.py sync_organizations || echo \"Org sync skipped - run manually\" &&
-        echo '==> Starting Gunicorn on port 8080...' &&
+        echo "==> Starting Gunicorn on port 8080..." &&
         gunicorn hr_payroll.wsgi:application \
           --bind 0.0.0.0:8080 \
           --workers 4 \
@@ -103,7 +108,7 @@ else:
           --access-logfile - \
           --error-logfile - \
           --log-level info
-      "
+      '
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
@@ -121,12 +126,7 @@ else:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: celery -A hr_payroll worker
-      --loglevel=info
-      --concurrency=4
-      --prefetch-multiplier=1
-      --max-tasks-per-child=100
-      -Q celery,repayments,uploads
+    command: celery -A hr_payroll worker --loglevel=info --concurrency=4 --prefetch-multiplier=1 --max-tasks-per-child=100 -Q celery,repayments,uploads
     volumes:
       - logs_volume:/app/logs
     networks:
@@ -139,9 +139,7 @@ else:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: celery -A hr_payroll beat
-      --loglevel=info
-      --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A hr_payroll beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - logs_volume:/app/logs
     networks:
@@ -154,10 +152,7 @@ else:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: >
-      sh -c 'celery -A hr_payroll flower 
-        --port=5555 
-        --basic_auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
+    command: sh -c 'celery -A hr_payroll flower --port=5555 --basic_auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
     expose:
       - "5555"
     networks:
