@@ -1,3 +1,5 @@
+version: '3.9'
+
 x-app-env: &app-env
   env_file: .env.prod
   depends_on:
@@ -7,7 +9,7 @@ x-app-env: &app-env
       condition: service_healthy
 
 services:
-
+  # ── PostgreSQL ────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -22,14 +24,19 @@ services:
     networks:
       - internal
 
+  # ── Redis ─────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     env_file: .env.prod
     command: >
-      sh -c 'redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"'
+      sh -c 'redis-server 
+        --maxmemory 256mb 
+        --maxmemory-policy allkeys-lru 
+        --requirepass "$$REDIS_PASSWORD"'
     volumes:
       - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping"]
       interval: 10s
@@ -38,6 +45,7 @@ services:
     networks:
       - internal
 
+  # ── Django / Gunicorn ─────────────────────────────────────
   web:
     build:
       context: .
@@ -45,60 +53,101 @@ services:
     restart: unless-stopped
     <<: *app-env
     command: >
-      sh -c "python manage.py migrate --noinput &&
-             python manage.py collectstatic --noinput &&
-             gunicorn hr_payroll.wsgi:application
-               --bind 0.0.0.0:8000
-               --workers 4
-               --timeout 120
-               --keep-alive 5
-               --max-requests 1000
-               --max-requests-jitter 100
-               --access-logfile -
-               --error-logfile -"
+      sh -c "
+        echo '==> Waiting for DB...' &&
+        until python -c '
+import psycopg2, os
+psycopg2.connect(
+    dbname=os.environ[\"DB_NAME\"],
+    user=os.environ[\"DB_USER\"],
+    password=os.environ[\"DB_PASSWORD\"],
+    host=os.environ[\"DB_HOST\"],
+    port=os.environ.get(\"DB_PORT\", \"5432\")
+)
+' 2>/dev/null; do 
+          echo ' retrying...'; 
+          sleep 2; 
+        done &&
+        echo '==> DB ready.' &&
+        echo '==> Creating migrations...' &&
+        python manage.py makemigrations base organizations payroll repayments --noinput &&
+        echo '==> Running migrations...' &&
+        python manage.py migrate --noinput &&
+        echo '==> Collecting static...' &&
+        python manage.py collectstatic --noinput --clear &&
+        echo '==> Creating superuser...' &&
+        python manage.py shell -c '
+from django.contrib.auth import get_user_model
+import os
+User = get_user_model()
+if not User.objects.filter(username=\"admin\").exists():
+    User.objects.create_superuser(
+        username=\"admin\",
+        email=os.environ.get(\"DJANGO_ADMIN_EMAIL\", \"admin@hr.dimeapp.co.ke\"),
+        password=os.environ.get(\"DJANGO_ADMIN_PASSWORD\", \"changeme123!\")
+    )
+    print(\"Superuser created\")
+else:
+    print(\"Superuser already exists\")
+' &&
+        echo '==> Syncing organizations...' &&
+        python manage.py sync_organizations || echo \"Org sync skipped - run manually\" &&
+        echo '==> Starting Gunicorn on port 8080...' &&
+        gunicorn hr_payroll.wsgi:application \
+          --bind 0.0.0.0:8080 \
+          --workers 4 \
+          --timeout 120 \
+          --keep-alive 5 \
+          --max-requests 1000 \
+          --max-requests-jitter 100 \
+          --access-logfile - \
+          --error-logfile - \
+          --log-level info
+      "
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - logs_volume:/app/logs
     expose:
-      - "8000"
+      - "8080"
     networks:
       - internal
       - external
 
+  # ── Celery Worker ─────────────────────────────────────────
   celery_worker:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: >
-      celery -A hr_payroll worker
-        --loglevel=info
-        --concurrency=4
-        --prefetch-multiplier=1
-        --max-tasks-per-child=100
-        -Q celery,repayments,uploads
+    command: celery -A hr_payroll worker
+      --loglevel=info
+      --concurrency=4
+      --prefetch-multiplier=1
+      --max-tasks-per-child=100
+      -Q celery,repayments,uploads
     volumes:
       - logs_volume:/app/logs
     networks:
       - internal
 
+  # ── Celery Beat ───────────────────────────────────────────
   celery_beat:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
-    command: >
-      celery -A hr_payroll beat
-        --loglevel=info
-        --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A hr_payroll beat
+      --loglevel=info
+      --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - logs_volume:/app/logs
     networks:
       - internal
 
+  # ── Flower ────────────────────────────────────────────────
   flower:
     build:
       context: .
@@ -106,13 +155,16 @@ services:
     restart: unless-stopped
     <<: *app-env
     command: >
-      sh -c 'celery -A hr_payroll flower --port=5555 --basic_auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
+      sh -c 'celery -A hr_payroll flower 
+        --port=5555 
+        --basic_auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
     expose:
       - "5555"
     networks:
       - internal
       - external
 
+  # ── Nginx ─────────────────────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
     restart: unless-stopped
@@ -122,6 +174,8 @@ services:
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /var/www/certbot:/var/www/certbot:ro
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/media:ro
     networks:

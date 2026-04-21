@@ -32,4 +32,4 @@ RUN mkdir -p /app/staticfiles /app/media /app/logs && \
     chown -R appuser:appuser /app
 
 USER appuser
-EXPOSE 8000
+EXPOSE 8080
