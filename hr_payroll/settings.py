@@ -54,6 +54,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'apps.api.exception_middleware.DisallowedHostMiddleware',  # Handle invalid hosts gracefully
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -364,7 +365,8 @@ LOGGING = {
 
 # ── SECURITY (production only) ───────────────────────────────
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    # Nginx handles HTTP to HTTPS redirect at the edge, so we don't need it here
+    # SECURE_SSL_REDIRECT = False  (handled by nginx)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -374,5 +376,5 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     X_FRAME_OPTIONS = 'DENY'
 
-
+# Trust the X-Forwarded-Proto header from nginx (since we're behind a proxy)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
