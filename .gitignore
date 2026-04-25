@@ -1,2 +1,3 @@
 !.env.dev
-!.env.prod.example
+#!.env.prod.example
+.env.prod
