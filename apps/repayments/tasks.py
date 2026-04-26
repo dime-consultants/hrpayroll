@@ -2,7 +2,7 @@
 Celery task pipeline:
 
   parse_payroll_upload      → reads Excel/CSV, creates SalaryDeduction rows
-  build_repayment_batch     → groups deductions into a RepaymentBatch (DRAFT)
+  build_repayment_batch     → groups deductions into a RepaymentBatch, auto-dispatches
   dispatch_repayment_batch  → fan-out chord, one task per deduction
   dispatch_single_repayment → calls LMS, handles retries
   finalize_batch            → chord callback, refreshes counters
@@ -38,6 +38,14 @@ def parse_payroll_upload(self, upload_id: str):
         upload = PayrollUpload.objects.select_related('organization').get(id=upload_id)
     except PayrollUpload.DoesNotExist:
         log.error('parse_payroll_upload: upload %s not found', upload_id)
+        return
+
+    # Guard — never reprocess a completed upload
+    if upload.status in (PayrollUpload.STATUS_DONE, PayrollUpload.STATUS_PARTIAL):
+        log.warning(
+            'parse_payroll_upload: upload %s already %s — skipping',
+            upload_id, upload.status,
+        )
         return
 
     upload.status = PayrollUpload.STATUS_PROCESSING
@@ -132,6 +140,12 @@ def build_repayment_batch(self, upload_id: str):
 
         log.info('build_repayment_batch: batch=%s deductions=%d total=%s',
                  batch.id, batch.total_deductions, batch.total_amount)
+
+        # Auto-dispatch immediately — remove this block and add an admin
+        # approval action if you want a manual review gate before dispatch.
+        dispatch_repayment_batch.delay(str(batch.id))
+        log.info('build_repayment_batch: queued dispatch for batch %s', batch.id)
+
     except Exception as exc:
         log.exception('build_repayment_batch failed for upload %s: %s', upload_id, exc)
         raise
@@ -168,6 +182,7 @@ def dispatch_repayment_batch(self, batch_id: str):
     if not deduction_ids:
         batch.status = RepaymentBatch.STATUS_COMPLETE
         batch.save(update_fields=['status'])
+        log.info('dispatch_repayment_batch: no eligible deductions for batch %s — marked complete', batch_id)
         return
 
     job = chord(
@@ -249,8 +264,11 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
 
     # Intelligent retry logic based on error classification
     if not result.success and result.code not in ('no_balance', 'lock_timeout', 'circuit_open'):
-        # Extract error classification if available
-        error_classification = result.response_body.get('classification') if isinstance(result.response_body, dict) else None
+        error_classification = (
+            result.response_body.get('classification')
+            if isinstance(result.response_body, dict)
+            else None
+        )
 
         if error_classification:
             classification = ErrorClassification(error_classification)
@@ -263,27 +281,27 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
             else:
                 classification = ErrorClassification.UNKNOWN
 
-        # Get intelligent retry countdown
         countdown = get_retry_countdown(self.request.retries + 1, classification)
 
         if countdown > 0 and self.request.retries < MAX_RETRIES:
             log.info(
                 'Retrying deduction %s in %ds (attempt %d/%d) classification=%s',
-                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES, classification.value
+                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES, classification.value,
             )
             raise self.retry(countdown=countdown)
         else:
             log.warning(
                 'Not retrying deduction %s (classification=%s or max retries reached)',
-                deduction_id, classification.value if countdown <= 0 else 'max_retries'
+                deduction_id, classification.value if countdown <= 0 else 'max_retries',
             )
+
     elif result.code == 'circuit_open':
-        # Circuit breaker is open — retry aggressively to wait for recovery
+        # Circuit breaker open — wait for recovery before retrying
         if self.request.retries < MAX_RETRIES:
-            countdown = 120  # Wait 2 minutes before retrying
+            countdown = 120  # 2 minutes
             log.info(
                 'Circuit breaker open for deduction %s — retrying in %ds (attempt %d/%d)',
-                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES
+                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES,
             )
             raise self.retry(countdown=countdown)
 
@@ -330,12 +348,12 @@ def cleanup_expired_idempotency_keys():
 # ─────────────────────────────────────────────────────────────
 
 COLUMN_ALIASES = {
-    'phone_number': ['phone_number', 'phone', 'msisdn', 'mobile', 'telephone'],
-    'amount':       ['amount', 'deduction', 'deduction_amount', 'repayment', 'repayment_amount'],
+    'phone_number':   ['phone_number', 'phone', 'msisdn', 'mobile', 'telephone'],
+    'amount':         ['amount', 'deduction', 'deduction_amount', 'repayment', 'repayment_amount'],
     'deduction_date': ['deduction_date', 'date', 'payroll_date', 'payment_date'],
-    'employee_name': ['employee_name', 'name', 'full_name', 'employee'],
-    'employee_id':   ['employee_id', 'staff_id', 'payroll_number', 'emp_id'],
-    'reference':     ['reference', 'ref', 'receipt', 'transaction_ref'],
+    'employee_name':  ['employee_name', 'name', 'full_name', 'employee'],
+    'employee_id':    ['employee_id', 'staff_id', 'payroll_number', 'emp_id'],
+    'reference':      ['reference', 'ref', 'receipt', 'transaction_ref'],
 }
 
 
@@ -419,6 +437,6 @@ def _validate_row(row: dict, row_num: int, upload) -> dict:
         'amount': amount,
         'deduction_date': deduction_date,
         'employee_name': str(row.get('employee_name') or '').strip()[:200],
-        'employee_id': str(row.get('employee_id') or '').strip()[:100],
-        'reference': str(row.get('reference') or '').strip()[:100],
+        'employee_id':   str(row.get('employee_id') or '').strip()[:100],
+        'reference':     str(row.get('reference') or '').strip()[:100],
     }
