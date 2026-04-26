@@ -400,7 +400,7 @@ def send_repayment(
             duration_ms = int((time.monotonic() - t0) * 1000)
             classification = ErrorClassification.NETWORK
             log.warning('LMS connection error for %s: %s', phone_number, exc)
-            # Don't record circuit failure for transient connection issues
+            circuit_breaker.record_failure()
             _upsert_idempotency(
                 key=idempotency_key,
                 organization_code=organization_code,
@@ -409,7 +409,7 @@ def send_repayment(
             )
             return LMSRepaymentResult(
                 success=False, code='connection_error',
-                amount_sent=Decimal('0'), response_body={},
+                amount_sent=Decimal('0'), response_body={'classification': classification.value},
                 duration_ms=duration_ms, error=str(exc),
             )
 
@@ -417,6 +417,7 @@ def send_repayment(
             duration_ms = int((time.monotonic() - t0) * 1000)
             classification = ErrorClassification.NETWORK
             log.warning('LMS timeout for %s after %dms', phone_number, duration_ms)
+            circuit_breaker.record_failure()
             _upsert_idempotency(
                 key=idempotency_key,
                 organization_code=organization_code,
@@ -425,7 +426,7 @@ def send_repayment(
             )
             return LMSRepaymentResult(
                 success=False, code='timeout',
-                amount_sent=Decimal('0'), response_body={},
+                amount_sent=Decimal('0'), response_body={'classification': classification.value},
                 duration_ms=duration_ms, error=str(exc),
             )
 

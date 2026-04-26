@@ -18,6 +18,8 @@ from celery import shared_task, chord, group
 from django.db import transaction as db_transaction
 from django.utils import timezone
 
+from apps.api.error_handling import ErrorClassification, get_retry_countdown
+
 log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -249,9 +251,8 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
     if not result.success and result.code not in ('no_balance', 'lock_timeout', 'circuit_open'):
         # Extract error classification if available
         error_classification = result.response_body.get('classification') if isinstance(result.response_body, dict) else None
-        
+
         if error_classification:
-            from apps.api.error_handling import ErrorClassification
             classification = ErrorClassification(error_classification)
         else:
             # Fallback: infer from code
@@ -261,10 +262,10 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
                 classification = ErrorClassification.TRANSIENT
             else:
                 classification = ErrorClassification.UNKNOWN
-        
+
         # Get intelligent retry countdown
         countdown = get_retry_countdown(self.request.retries + 1, classification)
-        
+
         if countdown > 0 and self.request.retries < MAX_RETRIES:
             log.info(
                 'Retrying deduction %s in %ds (attempt %d/%d) classification=%s',
