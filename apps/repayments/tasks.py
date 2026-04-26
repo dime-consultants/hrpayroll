@@ -186,6 +186,7 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
     from apps.payroll.models import SalaryDeduction
     from apps.repayments.models import RepaymentBatch, RepaymentRecord
     from apps.api.lms_client import send_repayment
+    from apps.api.error_handling import get_retry_countdown
 
     try:
         deduction = SalaryDeduction.objects.select_related('organization').get(id=deduction_id)
@@ -244,11 +245,45 @@ def dispatch_single_repayment(self, deduction_id: str, batch_id: str):
         completed_at=timezone.now(),
     )
 
-    if not result.success and result.code not in ('no_balance', 'lock_timeout'):
+    # Intelligent retry logic based on error classification
+    if not result.success and result.code not in ('no_balance', 'lock_timeout', 'circuit_open'):
+        # Extract error classification if available
+        error_classification = result.response_body.get('classification') if isinstance(result.response_body, dict) else None
+        
+        if error_classification:
+            from apps.api.error_handling import ErrorClassification
+            classification = ErrorClassification(error_classification)
+        else:
+            # Fallback: infer from code
+            if result.code in ('connection_error', 'timeout', 'network_error'):
+                classification = ErrorClassification.NETWORK
+            elif result.code in ('http_error',):
+                classification = ErrorClassification.TRANSIENT
+            else:
+                classification = ErrorClassification.UNKNOWN
+        
+        # Get intelligent retry countdown
+        countdown = get_retry_countdown(self.request.retries + 1, classification)
+        
+        if countdown > 0 and self.request.retries < MAX_RETRIES:
+            log.info(
+                'Retrying deduction %s in %ds (attempt %d/%d) classification=%s',
+                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES, classification.value
+            )
+            raise self.retry(countdown=countdown)
+        else:
+            log.warning(
+                'Not retrying deduction %s (classification=%s or max retries reached)',
+                deduction_id, classification.value if countdown <= 0 else 'max_retries'
+            )
+    elif result.code == 'circuit_open':
+        # Circuit breaker is open — retry aggressively to wait for recovery
         if self.request.retries < MAX_RETRIES:
-            countdown = RETRY_COUNTDOWN * (2 ** self.request.retries)
-            log.info('Retrying deduction %s in %ds (attempt %d/%d)',
-                     deduction_id, countdown, self.request.retries + 1, MAX_RETRIES)
+            countdown = 120  # Wait 2 minutes before retrying
+            log.info(
+                'Circuit breaker open for deduction %s — retrying in %ds (attempt %d/%d)',
+                deduction_id, countdown, self.request.retries + 1, MAX_RETRIES
+            )
             raise self.retry(countdown=countdown)
 
     return final_status

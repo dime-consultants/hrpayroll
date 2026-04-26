@@ -8,6 +8,8 @@ Guarantees:
   - Idempotency table check → no re-send on retry
   - Exponential backoff retries via urllib3 Retry
   - OAuth2 consumer key/secret token auth with auto-refresh on 401
+  - Circuit breaker to prevent retry storms on LMS outage
+  - Intelligent error classification (network vs business errors)
 """
 import logging
 import time
@@ -19,6 +21,16 @@ from django.conf import settings
 from django.core.cache import cache
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from .error_handling import (
+    LMSCircuitBreaker,
+    classify_request_error,
+    classify_lms_response_error,
+    ErrorClassification,
+    LMSNetworkError,
+    LMSTransientError,
+    LMSBusinessError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -251,15 +263,33 @@ def send_repayment(
     max_wait_lock: int = 30,
 ) -> LMSRepaymentResult:
     """
-    Thread-safe repayment dispatch.
+    Thread-safe repayment dispatch with circuit breaker and intelligent retry logic.
 
     Steps:
-      1. Acquire per-phone Redis mutex (prevents race conditions)
-      2. Idempotency check (prevents duplicate sends on retry)
-      3. Cap amount at current loan balance (prevents negative balances)
-      4. POST to LMS /api/main/register-repayment/
-      5. Release mutex in finally block regardless of outcome
+      1. Check circuit breaker (fail fast if LMS is down)
+      2. Acquire per-phone Redis mutex (prevents race conditions)
+      3. Idempotency check (prevents duplicate sends on retry)
+      4. Cap amount at current loan balance (prevents negative balances)
+      5. POST to LMS /api/main/register-repayment/
+      6. Release mutex in finally block regardless of outcome
+    
+    Returns:
+      LMSRepaymentResult with success/failure status and error classification
     """
+    # ── 0. Check circuit breaker ───────────────────────────
+    circuit_breaker = LMSCircuitBreaker(endpoint='lms_repayment')
+    if circuit_breaker.is_open():
+        log.warning(
+            'Circuit breaker OPEN — rejecting repayment for %s (LMS temporarily unavailable)',
+            phone_number
+        )
+        return LMSRepaymentResult(
+            success=False, code='circuit_open',
+            amount_sent=Decimal('0'), response_body={},
+            duration_ms=0,
+            error='LMS endpoint temporarily unavailable — circuit breaker open',
+        )
+    
     # ── 1. Acquire per-phone lock ──────────────────────────
     waited = 0
     while not _acquire_lock(phone_number):
@@ -335,9 +365,19 @@ def send_repayment(
             code = str(body.get('code', resp.status_code))
             success = code.startswith('200')
 
+            # Classify the response
+            error_class = classify_lms_response_error(code, body) if not success else ErrorClassification.BUSINESS
+
+            # Update circuit breaker
+            if success:
+                circuit_breaker.record_success()
+            else:
+                if error_class == ErrorClassification.TRANSIENT:
+                    circuit_breaker.record_failure()
+
             log.info(
-                'LMS repayment | phone=%s amount=%s code=%s %dms',
-                phone_number, capped, code, duration_ms,
+                'LMS repayment | phone=%s amount=%s code=%s %dms error_class=%s',
+                phone_number, capped, code, duration_ms, error_class.value if not success else 'none',
             )
 
             _upsert_idempotency(
@@ -356,17 +396,62 @@ def send_repayment(
                 error='' if success else body.get('message', 'LMS error'),
             )
 
-        except requests.HTTPError as exc:
+        except requests.exceptions.ConnectionError as exc:
             duration_ms = int((time.monotonic() - t0) * 1000)
-            if exc.response is not None and exc.response.status_code == 401:
-                log.warning('LMS returned 401 during repayment — invalidating token cache')
-                invalidate_token_cache()
-            log.error('LMS HTTP error for %s: %s', phone_number, exc)
+            classification = ErrorClassification.NETWORK
+            log.warning('LMS connection error for %s: %s', phone_number, exc)
+            # Don't record circuit failure for transient connection issues
             _upsert_idempotency(
                 key=idempotency_key,
                 organization_code=organization_code,
                 status=IdempotencyKey.STATUS_FAILED,
-                response_payload={'error': str(exc)},
+                response_payload={'error': str(exc), 'classification': classification.value},
+            )
+            return LMSRepaymentResult(
+                success=False, code='connection_error',
+                amount_sent=Decimal('0'), response_body={},
+                duration_ms=duration_ms, error=str(exc),
+            )
+
+        except requests.exceptions.Timeout as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            classification = ErrorClassification.NETWORK
+            log.warning('LMS timeout for %s after %dms', phone_number, duration_ms)
+            _upsert_idempotency(
+                key=idempotency_key,
+                organization_code=organization_code,
+                status=IdempotencyKey.STATUS_FAILED,
+                response_payload={'error': str(exc), 'classification': classification.value},
+            )
+            return LMSRepaymentResult(
+                success=False, code='timeout',
+                amount_sent=Decimal('0'), response_body={},
+                duration_ms=duration_ms, error=str(exc),
+            )
+
+        except requests.HTTPError as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            classification = classify_request_error(exc)
+            
+            if exc.response is not None and exc.response.status_code == 401:
+                log.warning('LMS returned 401 during repayment — invalidating token cache')
+                invalidate_token_cache()
+            
+            log.error(
+                'LMS HTTP error for %s: status=%s classification=%s',
+                phone_number, 
+                exc.response.status_code if exc.response else 'unknown',
+                classification.value
+            )
+            
+            if classification == ErrorClassification.TRANSIENT:
+                circuit_breaker.record_failure()
+            
+            _upsert_idempotency(
+                key=idempotency_key,
+                organization_code=organization_code,
+                status=IdempotencyKey.STATUS_FAILED,
+                response_payload={'error': str(exc), 'classification': classification.value},
             )
             return LMSRepaymentResult(
                 success=False, code='http_error',
@@ -376,12 +461,16 @@ def send_repayment(
 
         except requests.RequestException as exc:
             duration_ms = int((time.monotonic() - t0) * 1000)
-            log.error('LMS network error for %s: %s', phone_number, exc)
+            classification = classify_request_error(exc)
+            log.error(
+                'LMS network error for %s: classification=%s',
+                phone_number, classification.value
+            )
             _upsert_idempotency(
                 key=idempotency_key,
                 organization_code=organization_code,
                 status=IdempotencyKey.STATUS_FAILED,
-                response_payload={'error': str(exc)},
+                response_payload={'error': str(exc), 'classification': classification.value},
             )
             return LMSRepaymentResult(
                 success=False, code='network_error',
