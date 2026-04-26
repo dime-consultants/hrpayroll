@@ -39,9 +39,10 @@ COPY . .
 RUN mkdir -p /app/staticfiles /app/media /app/logs && \
     chown -R appuser:appuser /app
 
-# Copy and make entrypoint executable
+# Copy and make entrypoints executable
 COPY docker/entrypoint.prod.sh /app/docker/entrypoint.prod.sh
-RUN chmod +x /app/docker/entrypoint.prod.sh
+COPY docker/entrypoint.celery.sh /app/docker/entrypoint.celery.sh
+RUN chmod +x /app/docker/entrypoint.prod.sh /app/docker/entrypoint.celery.sh
 
 USER appuser
 
