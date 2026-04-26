@@ -206,8 +206,8 @@ CELERY_BEAT_SCHEDULE = {
 
 # ── LMS ──────────────────────────────────────────────────────
 LMS_BASE_URL             = config('LMS_BASE_URL', default='https://back.dimeapp.co.ke')
-LMS_CONSUMER_KEY         = config('LMS_CONSUMER_KEY', default='')
-LMS_CONSUMER_SECRET      = config('LMS_CONSUMER_SECRET', default='')
+LMS_CONSUMER_KEY         = config('LMS_CONSUMER_KEY', default='')#use only this
+LMS_CONSUMER_SECRET      = config('LMS_CONSUMER_SECRET', default='')#use only this to fetch token from lms
 LMS_TOKEN_URL            = config('LMS_TOKEN_URL', default='https://back.dimeapp.co.ke/api/partner/token/')
 LMS_SERVICE_USERNAME     = config('LMS_SERVICE_USERNAME', default='')
 LMS_SERVICE_PASSWORD     = config('LMS_SERVICE_PASSWORD', default='')
