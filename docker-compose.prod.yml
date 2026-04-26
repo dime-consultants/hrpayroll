@@ -68,6 +68,7 @@ services:
     command: celery -A hr_payroll worker --loglevel=info --concurrency=4 --prefetch-multiplier=1 --max-tasks-per-child=100 -Q celery,repayments,uploads
     volumes:
       - .:/app
+      - media_volume:/app/media
       - logs_volume:/app/logs
     networks:
       - internal
@@ -83,6 +84,7 @@ services:
     command: celery -A hr_payroll beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
+      - media_volume:/app/media
       - logs_volume:/app/logs
     networks:
       - internal
