@@ -64,6 +64,7 @@ services:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
+    entrypoint: /app/docker/entrypoint.celery.sh
     command: celery -A hr_payroll worker --loglevel=info --concurrency=4 --prefetch-multiplier=1 --max-tasks-per-child=100 -Q celery,repayments,uploads
     volumes:
       - .:/app
@@ -78,6 +79,7 @@ services:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
+    entrypoint: /app/docker/entrypoint.celery.sh
     command: celery -A hr_payroll beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
@@ -92,6 +94,7 @@ services:
       dockerfile: docker/Dockerfile.prod
     restart: unless-stopped
     <<: *app-env
+    entrypoint: /app/docker/entrypoint.celery.sh
     command: sh -c 'celery -A hr_payroll flower --port=5555 --basic_auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
     expose:
       - "5555"
