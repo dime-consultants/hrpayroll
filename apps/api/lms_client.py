@@ -3,6 +3,7 @@ Singleton HTTP client for the Dime LMS (back.dimeapp.co.ke).
 
 Guarantees:
   - Shared connection pool across worker threads (lru_cache Session)
+  - Separate non-retrying session for OAuth token endpoint
   - Per-phone Redis mutex → no concurrent duplicate repayments
   - Amount capped at loan balance → no negative balances
   - Idempotency table check → no re-send on retry
@@ -43,6 +44,7 @@ _LOCK_TTL = 60  # seconds
 
 @lru_cache(maxsize=1)
 def _get_session() -> requests.Session:
+    """Retrying session for all LMS calls except token auth."""
     session = requests.Session()
     retry = Retry(
         total=settings.LMS_RETRY_MAX,
@@ -55,6 +57,25 @@ def _get_session() -> requests.Session:
         pool_connections=settings.LMS_REQUEST_POOL_SIZE,
         pool_maxsize=settings.LMS_REQUEST_POOL_MAXSIZE,
         max_retries=retry,
+    )
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
+
+
+@lru_cache(maxsize=1)
+def _get_auth_session() -> requests.Session:
+    """
+    Plain session used exclusively for the OAuth token endpoint.
+    No retry adapter — a 4xx from the token endpoint is a credential/config
+    error, not a transient blip. Retrying it would multiply noise and slow
+    down the three-shape fallback loop in _get_auth_token().
+    """
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=2,
+        pool_maxsize=4,
+        # Intentionally no Retry
     )
     session.mount('https://', adapter)
     session.mount('http://', adapter)
@@ -84,6 +105,7 @@ def _release_lock(phone: str) -> None:
 _TOKEN_KEY = 'lms:service_token'
 _TOKEN_TTL = 60 * 60 * 7  # cache for 7 hrs (LMS JWT valid for 8)
 
+
 def _get_auth_token() -> str:
     """
     Obtain a Bearer token from the Dime LMS partner token endpoint.
@@ -96,6 +118,10 @@ def _get_auth_token() -> str:
       1. JSON body  {"consumer_key": ..., "consumer_secret": ...}
       2. HTTP Basic auth  (consumer_key:consumer_secret)
       3. Form body  consumer_key=...&consumer_secret=...
+
+    Uses _get_auth_session() — a plain session with NO retry adapter —
+    so a bad credential doesn't silently trigger LMS_RETRY_MAX extra calls
+    per shape (which would mean up to 9 slow requests before giving up).
 
     Token is cached in Redis until 5 minutes before the LMS-reported expiry
     (falls back to 7 hours if no expiry is provided).
@@ -145,7 +171,8 @@ def _get_auth_token() -> str:
     for attempt in attempts:
         method = attempt['method']
         try:
-            resp = _get_session().post(
+            # Use the bare auth session — no retry adapter
+            resp = _get_auth_session().post(
                 url,
                 timeout=settings.LMS_TIMEOUT,
                 verify=True,
@@ -200,7 +227,10 @@ def _get_auth_token() -> str:
                         expires_at, ttl,
                     )
                 except Exception as ttl_exc:
-                    log.warning('Could not parse expires_at=%s: %s — using default TTL', expires_at, ttl_exc)
+                    log.warning(
+                        'Could not parse expires_at=%s: %s — using default TTL',
+                        expires_at, ttl_exc,
+                    )
                     ttl = _TOKEN_TTL
 
             cache.set(_TOKEN_KEY, token, timeout=ttl)
@@ -220,6 +250,7 @@ def _get_auth_token() -> str:
         f'LMS auth failed at {url} after trying all request formats. '
         f'Last error: {last_error}'
     )
+
 
 def _headers() -> dict:
     return {
@@ -272,7 +303,7 @@ def send_repayment(
       4. Cap amount at current loan balance (prevents negative balances)
       5. POST to LMS /api/main/register-repayment/
       6. Release mutex in finally block regardless of outcome
-    
+
     Returns:
       LMSRepaymentResult with success/failure status and error classification
     """
@@ -289,7 +320,7 @@ def send_repayment(
             duration_ms=0,
             error='LMS endpoint temporarily unavailable — circuit breaker open',
         )
-    
+
     # ── 1. Acquire per-phone lock ──────────────────────────
     waited = 0
     while not _acquire_lock(phone_number):
@@ -365,19 +396,19 @@ def send_repayment(
             code = str(body.get('code', resp.status_code))
             success = code.startswith('200')
 
-            # Classify the response
-            error_class = classify_lms_response_error(code, body) if not success else ErrorClassification.BUSINESS
+            # Classify the response — only meaningful on failure
+            error_class = classify_lms_response_error(code, body) if not success else None
 
             # Update circuit breaker
             if success:
                 circuit_breaker.record_success()
-            else:
-                if error_class == ErrorClassification.TRANSIENT:
-                    circuit_breaker.record_failure()
+            elif error_class == ErrorClassification.TRANSIENT:
+                circuit_breaker.record_failure()
 
             log.info(
                 'LMS repayment | phone=%s amount=%s code=%s %dms error_class=%s',
-                phone_number, capped, code, duration_ms, error_class.value if not success else 'none',
+                phone_number, capped, code, duration_ms,
+                error_class.value if error_class else 'none',
             )
 
             _upsert_idempotency(
@@ -433,21 +464,21 @@ def send_repayment(
         except requests.HTTPError as exc:
             duration_ms = int((time.monotonic() - t0) * 1000)
             classification = classify_request_error(exc)
-            
+
             if exc.response is not None and exc.response.status_code == 401:
                 log.warning('LMS returned 401 during repayment — invalidating token cache')
                 invalidate_token_cache()
-            
+
             log.error(
                 'LMS HTTP error for %s: status=%s classification=%s',
-                phone_number, 
+                phone_number,
                 exc.response.status_code if exc.response else 'unknown',
-                classification.value
+                classification.value,
             )
-            
+
             if classification == ErrorClassification.TRANSIENT:
                 circuit_breaker.record_failure()
-            
+
             _upsert_idempotency(
                 key=idempotency_key,
                 organization_code=organization_code,
@@ -465,7 +496,7 @@ def send_repayment(
             classification = classify_request_error(exc)
             log.error(
                 'LMS network error for %s: classification=%s',
-                phone_number, classification.value
+                phone_number, classification.value,
             )
             _upsert_idempotency(
                 key=idempotency_key,
@@ -494,13 +525,16 @@ def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
     Returns Decimal('0') if the borrower has no active loans.
     Falls back to the requested amount if the LMS call fails — the LMS
     will reject any genuine overpayment on its side.
+
+    Uses a tighter timeout (10s max) because this runs inside the Redis lock.
+    A slow call here burns into the 60s _LOCK_TTL window.
     """
     try:
         resp = _get_session().post(
             f'{settings.LMS_BASE_URL}/api/main/get-borrower-loans/',
             json={'phone_number': phone_number, 'page': 1, 'count': 10},
             headers=_headers(),
-            timeout=settings.LMS_TIMEOUT,
+            timeout=min(settings.LMS_TIMEOUT, 10),  # cap at 10s inside the lock
             verify=True,
         )
         if resp.status_code == 401:
@@ -509,7 +543,7 @@ def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
                 f'{settings.LMS_BASE_URL}/api/main/get-borrower-loans/',
                 json={'phone_number': phone_number, 'page': 1, 'count': 10},
                 headers=_headers(),
-                timeout=settings.LMS_TIMEOUT,
+                timeout=min(settings.LMS_TIMEOUT, 10),
                 verify=True,
             )
         loans = _safe_json(resp).get('data', [])
