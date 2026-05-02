@@ -198,12 +198,12 @@ def _get_auth_token() -> str:
             # Fallback shapes: flat {"access": ...} / {"access_token": ...} / {"token": ...}
             nested = data.get('data') if isinstance(data.get('data'), dict) else {}
             token = (
-                data.get('token')
-                # or nested.get('access_token')
-                # or nested.get('access')
-                # or data.get('access')
-                # or data.get('access_token')
-                # or data.get('token')
+                nested.get('token')
+                or nested.get('access_token')
+                or nested.get('access')
+                or data.get('token')
+                or data.get('access_token')
+                or data.get('access')
             )
 
             if not token:
