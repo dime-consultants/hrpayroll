@@ -198,12 +198,12 @@ def _get_auth_token() -> str:
             # Fallback shapes: flat {"access": ...} / {"access_token": ...} / {"token": ...}
             nested = data.get('data') if isinstance(data.get('data'), dict) else {}
             token = (
-                nested.get('token')
-                or nested.get('access_token')
-                or nested.get('access')
-                or data.get('access')
-                or data.get('access_token')
-                or data.get('token')
+                data.get('token')
+                # or nested.get('access_token')
+                # or nested.get('access')
+                # or data.get('access')
+                # or data.get('access_token')
+                # or data.get('token')
             )
 
             if not token:
@@ -216,7 +216,7 @@ def _get_auth_token() -> str:
 
             # ── Determine TTL from LMS-reported expiry ─────────────
             # expires_at is a Unix timestamp string e.g. "1773828511"
-            expires_at = nested.get('expires_at') or data.get('expires_at')
+            expires_at = data.get('expires_at')
             ttl = _TOKEN_TTL  # default 7 hours
             if expires_at:
                 try:
@@ -371,7 +371,7 @@ def send_repayment(
         t0 = time.monotonic()
         try:
             resp = _get_session().post(
-                f'{settings.LMS_BASE_URL}/api/main/register-repayment/',
+                f'{settings.LMS_BASE_URL}/api/partner/pay-loan/',
                 json=payload,
                 headers=_headers(),
                 timeout=settings.LMS_TIMEOUT,
@@ -384,7 +384,7 @@ def send_repayment(
                 log.warning('LMS returned 401 — refreshing token and retrying once')
                 invalidate_token_cache()
                 resp = _get_session().post(
-                    f'{settings.LMS_BASE_URL}/api/main/register-repayment/',
+                    f'{settings.LMS_BASE_URL}/api/partner/pay-loan/',
                     json=payload,
                     headers=_headers(),
                     timeout=settings.LMS_TIMEOUT,
