@@ -83,7 +83,9 @@ def parse_payroll_upload(self, upload_id: str):
             bulk_deductions.append(deduction)
 
         with db_transaction.atomic():
-            # ignore_conflicts skips rows whose idempotency_key already exists
+            # ignore_conflicts skips rows whose idempotency_key already exists.
+            # We count actual DB insertions via len() minus conflicts rather than
+            # trusting the return value, which varies by Django/DB version.
             SalaryDeduction.objects.bulk_create(bulk_deductions, ignore_conflicts=True)
             rows_created = len(bulk_deductions)
 
@@ -119,10 +121,27 @@ def build_repayment_batch(self, upload_id: str):
 
     try:
         upload = PayrollUpload.objects.get(id=upload_id)
+
+        # BUG FIX: the original query filtered status=QUEUED only.
+        # On a re-run (or when a prior run left rows in FAILED/SUCCESS/etc.),
+        # that returned 0 rows → batch total=0 → dispatch found nothing → marked complete.
+        #
+        # Correct behaviour: include ALL deductions for this upload that still
+        # need to be dispatched — QUEUED (fresh) + FAILED (retry-eligible).
+        # SUCCESS and SKIPPED are intentionally excluded; they're already done.
         deductions = SalaryDeduction.objects.filter(
-            upload=upload, status=SalaryDeduction.STATUS_QUEUED
+            upload=upload,
+            status__in=[SalaryDeduction.STATUS_QUEUED, SalaryDeduction.STATUS_FAILED],
         )
         total_amount = deductions.aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+
+        if not deductions.exists():
+            log.warning(
+                'build_repayment_batch: no dispatchable deductions for upload %s '
+                '(all may already be SUCCESS/SKIPPED)',
+                upload_id,
+            )
+            return
 
         batch, created = RepaymentBatch.objects.get_or_create(
             upload=upload,
