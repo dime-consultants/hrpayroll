@@ -33,6 +33,8 @@ from .error_handling import (
     LMSBusinessError,
 )
 
+from .decorators import partner_authenticated
+
 log = logging.getLogger(__name__)
 
 _LOCK_TTL = 60  # seconds
@@ -301,7 +303,7 @@ def send_repayment(
       2. Acquire per-phone Redis mutex (prevents race conditions)
       3. Idempotency check (prevents duplicate sends on retry)
       4. Cap amount at current loan balance (prevents negative balances)
-      5. POST to LMS /api/main/register-repayment/
+      5. POST to LMS /api/partner/pay-loan/
       6. Release mutex in finally block regardless of outcome
 
     Returns:
@@ -520,28 +522,19 @@ def send_repayment(
 # ─────────────────────────────────────────────────────────────
 
 def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
-    """
-    Fetch active loan balance from LMS and return min(requested, balance).
-    Returns Decimal('0') if the borrower has no active loans.
-    Falls back to the requested amount if the LMS call fails — the LMS
-    will reject any genuine overpayment on its side.
-
-    Uses a tighter timeout (10s max) because this runs inside the Redis lock.
-    A slow call here burns into the 60s _LOCK_TTL window.
-    """
     try:
         resp = _get_session().post(
-            f'{settings.LMS_BASE_URL}/api/main/get-borrower-loans/',
-            json={'phone_number': phone_number, 'page': 1, 'count': 10},
+            f'{settings.LMS_BASE_URL}/api/partner/customer-loans/',
+            json={'phone_number': phone_number},
             headers=_headers(),
-            timeout=min(settings.LMS_TIMEOUT, 10),  # cap at 10s inside the lock
+            timeout=min(settings.LMS_TIMEOUT, 10),
             verify=True,
         )
         if resp.status_code == 401:
             invalidate_token_cache()
             resp = _get_session().post(
-                f'{settings.LMS_BASE_URL}/api/main/get-borrower-loans/',
-                json={'phone_number': phone_number, 'page': 1, 'count': 10},
+                f'{settings.LMS_BASE_URL}/api/partner/customer-loans/',
+                json={'phone_number': phone_number},
                 headers=_headers(),
                 timeout=min(settings.LMS_TIMEOUT, 10),
                 verify=True,
@@ -550,8 +543,17 @@ def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
         active = [l for l in loans if l.get('loan_status_id') == 1]
         if not active:
             return Decimal('0')
-        total = sum(Decimal(str(l.get('balance_amount', 0))) for l in active)
-        return min(requested, total)
+
+        # Sort oldest first — same order register_repayment uses
+        from datetime import datetime
+        active.sort(key=lambda l: datetime.strptime(l['loan_released_date'], '%d/%m/%Y'))
+
+        # Cap against oldest loan only — register_repayment waterfall
+        # will handle spillover to the next loan if needed
+        oldest = active[0]
+        balance = Decimal(str(oldest.get('balance_amount', 0)))
+        return min(requested, balance)
+
     except Exception as exc:
         log.warning(
             'Could not fetch balance for %s: %s — using requested amount as fallback',
