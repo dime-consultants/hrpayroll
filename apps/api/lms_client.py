@@ -33,7 +33,6 @@ from .error_handling import (
     LMSBusinessError,
 )
 
-from .decorators import partner_authenticated
 
 log = logging.getLogger(__name__)
 
