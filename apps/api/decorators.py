@@ -1,8 +1,7 @@
 # apps/api/decorators.py
 from functools import wraps
 from django.http import JsonResponse
-from django.conf import settings
-from apps.api.lms_client import _get_auth_token 
+
 
 def partner_authenticated(view_func):
     @wraps(view_func)
@@ -12,6 +11,7 @@ def partner_authenticated(view_func):
         if not token:
             return JsonResponse({'code': '401', 'message': 'Unauthorized'}, status=401)
         try:
+            from apps.api.lms_client import _get_auth_token 
             expected = _get_auth_token()
         except Exception:
             return JsonResponse({'code': '500', 'message': 'Auth unavailable'}, status=500)
