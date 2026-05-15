@@ -14,6 +14,9 @@ ALLOWED_HOSTS = config(
     cast=Csv()
 )
 
+AUTH_USER_MODEL = 'users.User'
+
+
 DJANGO_APPS = [
     'unfold',
     'unfold.contrib.filters',
@@ -26,6 +29,8 @@ DJANGO_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_filters',
+    'axes',
     'users',
 ]
 
@@ -34,12 +39,12 @@ THIRD_PARTY_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
-    'django_filters',
+    
     'drf_spectacular',
     'django_celery_beat',
     'django_celery_results',
     'import_export',
-    'axes',
+    'django_redis',
 ]
 
 LOCAL_APPS = [
