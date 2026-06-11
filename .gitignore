@@ -1,2 +1,50 @@
-!.env.dev
-!.env.prod.example
+# --- Environment files ---
+.env*
+!.env.prod.example   # keep example env file tracked
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+
+# --- Virtual environments ---
+venv/
+.env/
+.venv/
+env/
+ENV/
+
+# --- Django / migrations ---
+db.sqlite3
+*.log
+*.pot
+*.mo
+
+# --- Coverage / testing ---
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Docker ---
+*.pid
+*.seed
+*.bak
+*.tmp
+*.log
+
+# --- Misc ---
+.DS_Store
+Thumbs.db
