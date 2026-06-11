@@ -1,6 +1,7 @@
 # apps/repayments/models.py
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -81,7 +82,8 @@ class RepaymentBatch(BaseModel):
     skipped_count     = models.PositiveIntegerField(default=0)
     successful_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
     approved_by       = models.ForeignKey(
-        'auth.User', null=True, blank=True,
+        settings.AUTH_USER_MODEL,   # ← was: 'auth.User' (hardcoded string)
+        null=True, blank=True,
         on_delete=models.SET_NULL, related_name='approved_batches'
     )
     approved_at    = models.DateTimeField(null=True, blank=True)

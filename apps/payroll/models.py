@@ -1,7 +1,7 @@
 # apps/payroll/models.py
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.db import models
 from django.utils import timezone
@@ -34,7 +34,8 @@ class PayrollUpload(BaseModel):
         related_name='payroll_uploads'
     )
     uploaded_by = models.ForeignKey(
-        User, null=True, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL,   # ← was: User (direct import from auth)
+        null=True, on_delete=models.SET_NULL,
         related_name='payroll_uploads'
     )
     file = models.FileField(
