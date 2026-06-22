@@ -52,3 +52,5 @@ htmlcov/
 # --- Misc ---
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
