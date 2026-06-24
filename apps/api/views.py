@@ -1,6 +1,8 @@
 import logging
 from decimal import Decimal
 
+import requests as http_client
+from django.conf import settings
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -26,6 +28,28 @@ from .serializers import (
 from .throttles import RepaymentRateThrottle, BurstRepaymentThrottle
 
 log = logging.getLogger(__name__)
+
+DIMEAPP_UPLOADS_URL = 'https://back.dimeapp.co.ke/api/v1/uploads/'
+
+
+def _forward_to_dimeapp(upload, callback_url):
+    """Send a newly-saved upload to back.dimeapp.co.ke for approval."""
+    try:
+        with upload.file.open('rb') as f:
+            resp = http_client.post(
+                DIMEAPP_UPLOADS_URL,
+                files={'file': (upload.original_filename, f)},
+                data={
+                    'payroll_period': str(upload.payroll_period),
+                    'upload_id': str(upload.id),
+                    'callback_url': callback_url,
+                },
+                headers={'Authorization': f'Bearer {getattr(settings, "DIMEAPP_API_KEY", "")}'},
+                timeout=30,
+            )
+            resp.raise_for_status()
+    except Exception as exc:
+        log.warning('dimeapp forward failed for upload %s: %s', upload.id, exc)
 
 
 class HRTokenObtainView(TokenObtainPairView):
@@ -168,6 +192,8 @@ class PayrollUploadListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
         self._audit('upload', upload.id,
                     f'Uploaded {upload.original_filename} for {upload.payroll_period:%Y-%m}',
                     metadata={'filename': upload.original_filename})
+        callback_url = self.request.build_absolute_uri(f'/api/v1/uploads/{upload.id}/approve/')
+        _forward_to_dimeapp(upload, callback_url)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={'request': request})
@@ -283,6 +309,41 @@ class RepaymentRecordListView(OrgScopedMixin, generics.ListAPIView):
         return RepaymentRecord.objects.filter(organization=self.get_org()).select_related(
             'organization', 'batch', 'deduction'
         )
+
+
+class UploadApprovalCallbackView(APIView):
+    """
+    POST /api/v1/uploads/<pk>/approve/
+    Called by back.dimeapp.co.ke once an upload is approved.
+    Transitions status approval_pending → pending and queues Celery parsing.
+    """
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request, pk):
+        secret = getattr(settings, 'DIMEAPP_CALLBACK_SECRET', '')
+        if secret and request.headers.get('Authorization') != f'Bearer {secret}':
+            return Response({'detail': 'Unauthorized.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            upload = PayrollUpload.objects.get(id=pk)
+        except PayrollUpload.DoesNotExist:
+            return Response({'detail': 'Upload not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if upload.status != PayrollUpload.STATUS_APPROVAL_PENDING:
+            return Response(
+                {'detail': f'Upload is "{upload.status}" — only approval_pending uploads can be approved.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        upload.status = PayrollUpload.STATUS_APPROVED
+        upload.save(update_fields=['status', 'date_modified'])
+
+        from apps.repayments.tasks import parse_payroll_upload
+        parse_payroll_upload.delay(str(upload.id))
+
+        log.info('Upload %s approved by dimeapp — parse task queued.', upload.id)
+        return Response({'detail': 'Approved. Processing queued.'}, status=status.HTTP_200_OK)
 
 
 class HealthCheckView(APIView):

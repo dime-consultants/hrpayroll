@@ -108,10 +108,9 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
             organization=request.hr_organization,
             uploaded_by=request.user,
             original_filename=validated_data['file'].name,
+            status=PayrollUpload.STATUS_APPROVAL_PENDING,
             **validated_data
         )
-        from apps.repayments.tasks import parse_payroll_upload
-        parse_payroll_upload.delay(str(upload.id))
         return upload
 
 
