@@ -98,8 +98,8 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f'Only {", ".join(allowed)} files are accepted.'
             )
-        if value.size > 10 * 1024 * 1024:
-            raise serializers.ValidationError('File must be under 10MB.')
+        if value.size > 50 * 1024 * 1024:
+            raise serializers.ValidationError('File must be under 50MB.')
         return value
 
     def create(self, validated_data):
