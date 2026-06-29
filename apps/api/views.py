@@ -195,12 +195,32 @@ class PayrollUploadListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
         )
 
 
-class PayrollUploadDetailView(OrgScopedMixin, generics.RetrieveAPIView):
+class PayrollUploadDetailView(OrgScopedMixin, generics.RetrieveDestroyAPIView):
     serializer_class = PayrollUploadSerializer
     permission_classes = [IsHRUser, BelongsToOrganization]
 
     def get_queryset(self):
         return PayrollUpload.objects.filter(organization=self.get_org())
+
+    def get_permissions(self):
+        if self.request.method == 'DELETE':
+            return [IsHRAdmin(), BelongsToOrganization()]
+        return [IsHRUser(), BelongsToOrganization()]
+
+    def perform_destroy(self, instance):
+        if instance.status == PayrollUpload.STATUS_PROCESSING:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                'Cannot delete an upload that is currently being processed.'
+            )
+        file_name = instance.original_filename
+        instance.file.delete(save=False)
+        instance.delete()
+        self._audit(
+            'upload_delete',
+            instance.id,
+            f'Deleted upload {file_name} for {instance.payroll_period:%Y-%m}',
+        )
 
 
 class SalaryDeductionListView(OrgScopedMixin, generics.ListAPIView):

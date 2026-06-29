@@ -77,6 +77,7 @@ class HRUser(BaseModel):
 class AuditLog(BaseModel):
     ACTION_CHOICES = [
         ('upload',             'Payroll Upload'),
+        ('upload_delete',      'Payroll Upload Deleted'),
         ('deduction_create',   'Deduction Created'),
         ('batch_submit',       'Repayment Batch Submitted'),
         ('batch_approve',      'Repayment Batch Approved'),
