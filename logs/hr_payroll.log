@@ -1331,3 +1331,31 @@ INFO 2026-06-29 11:01:23,244 trace 17592 26696 Task apps.repayments.tasks.build_
 INFO 2026-06-29 11:01:23,244 trace 17592 26696 Task apps.repayments.tasks.parse_payroll_upload[4246e3ea-01fe-4bfd-9f60-97e349760bdf] succeeded in 0.0940000000409782s: None
 WARNING 2026-06-29 11:17:03,242 log 23956 29272 Not Found: /favicon.ico
 WARNING 2026-06-29 11:17:03,242 basehttp 23956 29272 "GET /favicon.ico HTTP/1.1" 404 3370
+INFO 2026-06-29 11:48:40,817 tasks 18024 24732 parse_payroll_upload: upload=4c40816a-0234-470c-9194-92bc6f79100f created=0 errors=259
+WARNING 2026-06-29 11:48:40,817 tasks 18024 24732 build_repayment_batch: no dispatchable deductions for upload 4c40816a-0234-470c-9194-92bc6f79100f (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 11:48:40,915 trace 18024 24732 Task apps.repayments.tasks.build_repayment_batch[c9408646-7652-41c3-8708-fad2778d6ea2] succeeded in 0.09399999998277053s: None
+INFO 2026-06-29 11:48:40,915 trace 18024 24732 Task apps.repayments.tasks.parse_payroll_upload[aff065f2-b4b3-4331-956d-67db901fc45e] succeeded in 0.18799999996554106s: None
+INFO 2026-06-29 11:59:07,971 tasks 18024 28552 parse_payroll_upload: upload=a9c4e506-f19f-4ec5-853f-cba210db0e99 created=2 errors=0
+INFO 2026-06-29 11:59:08,011 tasks 18024 28552 build_repayment_batch: batch=ecb38e42-a3a0-481f-bf23-21fe23a7574a deductions=1 total=3927
+DEBUG 2026-06-29 11:59:09,595 lms_client 18024 28552 LMS token attempt method=json status=200 body={"code": "200.001", "data": {"token": "M2JhYTcxMjkyZjY0YzIyOGVhNmM0ZjE1ZTU5MTg5", "expires_at": "1782725355"}}
+INFO 2026-06-29 11:59:09,596 lms_client 18024 28552 LMS token obtained and cached | method=json url=https://back.dimeapp.co.ke/api/partner/token/ ttl=25200s
+INFO 2026-06-29 11:59:20,822 lms_client 18024 28552 LMS repayment | phone=254791305299 amount=124.80 code=200.001 9141ms error_class=none
+INFO 2026-06-29 11:59:20,878 trace 18024 28552 Task apps.repayments.tasks.dispatch_single_repayment[bbca07a4-885d-4026-a9ee-4cb36c387a85] succeeded in 12.639999999955762s: 'success'
+INFO 2026-06-29 11:59:21,145 trace 18024 28552 Task apps.repayments.tasks.finalize_batch[ad55c3d3-a7c3-4310-9c7e-d491ef2350bf] succeeded in 0.26600000000325963s: None
+INFO 2026-06-29 11:59:21,145 tasks 18024 28552 dispatch_repayment_batch: dispatched 1 tasks for batch ecb38e42-a3a0-481f-bf23-21fe23a7574a
+INFO 2026-06-29 11:59:21,145 trace 18024 28552 Task apps.repayments.tasks.dispatch_repayment_batch[83a8a867-92a3-436b-acf7-5a50f7f84bac] succeeded in 13.125s: None
+INFO 2026-06-29 11:59:21,145 tasks 18024 28552 build_repayment_batch: queued dispatch for batch ecb38e42-a3a0-481f-bf23-21fe23a7574a
+INFO 2026-06-29 11:59:21,161 trace 18024 28552 Task apps.repayments.tasks.build_repayment_batch[ffa830c9-6a1d-48d9-a7ba-8fb09a860b36] succeeded in 13.187999999965541s: None
+INFO 2026-06-29 11:59:21,161 trace 18024 28552 Task apps.repayments.tasks.parse_payroll_upload[09759bf2-5ec4-43ca-a0c1-dd69c7155135] succeeded in 13.312999999965541s: None
+INFO 2026-06-29 15:50:25,550 tasks 29600 6368 parse_payroll_upload: upload=06858577-0620-4bd2-a383-771727d69fe3 created=0 errors=259
+WARNING 2026-06-29 15:50:25,550 tasks 29600 6368 build_repayment_batch: no dispatchable deductions for upload 06858577-0620-4bd2-a383-771727d69fe3 (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 15:50:25,670 trace 29600 6368 Task apps.repayments.tasks.build_repayment_batch[b6434ac4-28bd-4a79-b6e2-597f4b43b049] succeeded in 0.125s: None
+INFO 2026-06-29 15:50:25,670 trace 29600 6368 Task apps.repayments.tasks.parse_payroll_upload[0cecb567-9c3e-4bf9-a7eb-ee5365b94303] succeeded in 0.23399999999674037s: None
+WARNING 2026-06-29 16:24:30,752 log 27532 26460 Forbidden: /api/v1/uploads/template/
+WARNING 2026-06-29 16:24:30,753 basehttp 27532 26460 "GET /api/v1/uploads/template/ HTTP/1.1" 403 67
+WARNING 2026-06-29 16:24:33,147 log 27532 26460 Forbidden: /api/v1/uploads/template/
+WARNING 2026-06-29 16:24:33,147 basehttp 27532 26460 "GET /api/v1/uploads/template/ HTTP/1.1" 403 67
+INFO 2026-06-29 16:31:49,792 tasks 7952 28584 parse_payroll_upload: upload=54d9abf9-2e40-4f18-a765-475bac802205 created=0 errors=259
+WARNING 2026-06-29 16:31:49,792 tasks 7952 28584 build_repayment_batch: no dispatchable deductions for upload 54d9abf9-2e40-4f18-a765-475bac802205 (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 16:31:49,877 trace 7952 28584 Task apps.repayments.tasks.build_repayment_batch[75ae59cc-54d8-4037-abf3-a0c4b668c405] succeeded in 0.07800000003771856s: None
+INFO 2026-06-29 16:31:49,877 trace 7952 28584 Task apps.repayments.tasks.parse_payroll_upload[f716d5ca-0118-4cf5-ab38-96bcd7bdae4e] succeeded in 0.1720000000204891s: None
