@@ -2,6 +2,8 @@ from rest_framework.permissions import BasePermission
 
 
 class IsHRUser(BasePermission):
+    message = 'You must be an active HR user to access this resource.'
+
     def has_permission(self, request, view):
         return (
             request.user
@@ -12,6 +14,8 @@ class IsHRUser(BasePermission):
 
 
 class IsHRAdmin(BasePermission):
+    message = 'Only HR Admins can perform this action.'
+
     def has_permission(self, request, view):
         return (
             request.user
@@ -23,6 +27,8 @@ class IsHRAdmin(BasePermission):
 
 
 class IsHRSuperAdmin(BasePermission):
+    message = 'Only HR Super Admins can perform this action.'
+
     def has_permission(self, request, view):
         return (
             request.user
