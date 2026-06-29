@@ -14,7 +14,7 @@ from apps.organizations.models import CheckoffOrganizationMirror, HRUser, AuditL
 from apps.payroll.models import PayrollUpload, SalaryDeduction
 from apps.repayments.models import RepaymentBatch, RepaymentRecord
 
-from .permissions import IsHRUser, IsHRAdmin, CanUpload, BelongsToOrganization
+from .permissions import IsHRUser, IsHRAdmin, BelongsToOrganization
 from .serializers import (
     CheckoffOrganizationSerializer,
     HRUserSerializer, HRUserCreateSerializer,
@@ -39,6 +39,22 @@ class HRTokenRefreshView(TokenRefreshView):
 class OrgScopedMixin:
     """Mixin that scopes all querysets to request.hr_organization."""
     permission_classes = [IsHRUser]
+
+    def perform_authentication(self, request):
+        # JWT auth is lazy — calling super() forces it so request.user is resolved
+        # before check_permissions(). We then re-populate hr_user on the underlying
+        # Django request so the permission classes can read it via DRF's proxy.
+        super().perform_authentication(request)
+        request._request.hr_user = None
+        request._request.hr_organization = None
+        if request.user and request.user.is_authenticated:
+            try:
+                hr_profile = request.user.hr_profile
+                if hr_profile.is_active:
+                    request._request.hr_user = hr_profile
+                    request._request.hr_organization = hr_profile.organization
+            except Exception:
+                pass
 
     def get_org(self):
         if self.request.user.is_superuser:
@@ -153,7 +169,7 @@ class PayrollUploadListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
     ordering = ['-date_created']
 
     def get_permissions(self):
-        return [CanUpload()] if self.request.method == 'POST' else [IsHRUser()]
+        return [IsHRAdmin()] if self.request.method == 'POST' else [IsHRUser()]
 
     def get_serializer_class(self):
         return PayrollUploadCreateSerializer if self.request.method == 'POST' else PayrollUploadSerializer
@@ -283,6 +299,14 @@ class RepaymentRecordListView(OrgScopedMixin, generics.ListAPIView):
         return RepaymentRecord.objects.filter(organization=self.get_org()).select_related(
             'organization', 'batch', 'deduction'
         )
+
+
+class UploadApprovalCallbackView(OrgScopedMixin, APIView):
+    """Callback endpoint for LMS to confirm upload approval (not yet implemented)."""
+    permission_classes = [IsHRAdmin]
+
+    def post(self, request, pk):
+        return Response({'detail': 'Not implemented.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 class HealthCheckView(APIView):

@@ -706,3 +706,281 @@ LINE 1: ...ions_checkofforganizationmirror"."is_active" FROM "organizat...
                                                              ^
 
 ERROR 2026-03-18 12:30:12,870 basehttp 39 140200898606784 "GET /admin/payroll/salarydeduction/ HTTP/1.1" 500 218583
+ERROR 2026-06-26 12:06:03,322 exceptions 8936 16656 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x000001B4C4A588F0>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:03,346 log 8936 16656 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,363 log 8936 16656 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,379 log 8936 16656 Bad Request: /api/v1/uploads/
+ERROR 2026-06-26 12:06:03,403 exceptions 8936 16656 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x000001B4C4B5FFE0>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:03,411 log 8936 16656 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,428 log 8936 16656 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,444 log 8936 16656 Forbidden: /api/v1/uploads/
+ERROR 2026-06-26 12:06:03,468 exceptions 8936 16656 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x000001B4C4695F10>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:03,476 log 8936 16656 Internal Server Error: /api/v1/uploads/
+ERROR 2026-06-26 12:06:03,500 exceptions 8936 16656 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x000001B4C441D3D0>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:03,500 log 8936 16656 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,557 log 8936 16656 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:06:03,581 log 8936 16656 Unauthorized: /api/v1/uploads/
+ERROR 2026-06-26 12:06:20,469 exceptions 27604 23212 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x0000016B8FE01400>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:20,469 log 27604 23212 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,485 log 27604 23212 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,500 log 27604 23212 Bad Request: /api/v1/uploads/
+ERROR 2026-06-26 12:06:20,519 exceptions 27604 23212 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x0000016B8F8A1940>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:20,519 log 27604 23212 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,537 log 27604 23212 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,546 log 27604 23212 Forbidden: /api/v1/uploads/
+ERROR 2026-06-26 12:06:20,554 exceptions 27604 23212 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x0000016B8FEDE1B0>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:20,562 log 27604 23212 Internal Server Error: /api/v1/uploads/
+ERROR 2026-06-26 12:06:20,578 exceptions 27604 23212 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x0000016B8FEEE420>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:06:20,578 log 27604 23212 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,625 log 27604 23212 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:06:20,656 log 27604 23212 Unauthorized: /api/v1/uploads/
+ERROR 2026-06-26 12:09:00,186 exceptions 8196 11908 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x00000206BD72B080>: 'User' object has no attribute 'get_full_name'
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\views.py", line 193, in create
+    PayrollUploadSerializer(serializer.instance, context={'request': request}).data,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 573, in data
+    ret = super().data
+          ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 251, in data
+    self._data = self.to_representation(self.instance)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 540, in to_representation
+    ret[field.field_name] = field.to_representation(attribute)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\fields.py", line 1870, in to_representation
+    return method(value)
+           ^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\HR payroll\Dime-HR-Payroll\apps\api\serializers.py", line 86, in get_uploaded_by_name
+    return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'User' object has no attribute 'get_full_name'. Did you mean: 'full_name'?
+ERROR 2026-06-26 12:09:00,194 log 8196 11908 Internal Server Error: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,212 log 22280 12044 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,220 log 22280 12044 Bad Request: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,244 log 22280 12044 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,252 log 22280 12044 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,269 log 22280 12044 Not Found: /api/v1/uploads/188b069b-e8ee-45bd-af8e-7e5c0db0c21b/
+WARNING 2026-06-26 12:11:36,325 log 22280 12044 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:11:36,349 log 22280 12044 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,296 log 19884 24292 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,320 log 19884 24292 Bad Request: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,392 log 19884 24292 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,424 log 19884 24292 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,456 log 19884 24292 Not Found: /api/v1/uploads/ced40ecc-611d-4c19-a90b-c19fb30b6c36/
+WARNING 2026-06-26 12:29:40,667 log 19884 24292 Forbidden: /api/v1/uploads/
+WARNING 2026-06-26 12:29:40,762 log 19884 24292 Unauthorized: /api/v1/uploads/

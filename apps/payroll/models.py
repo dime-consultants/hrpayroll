@@ -15,6 +15,8 @@ def payroll_upload_path(instance, filename):
 
 
 class PayrollUpload(BaseModel):
+    STATUS_APPROVAL_PENDING = 'approval_pending'
+    STATUS_APPROVED   = 'approved'
     STATUS_PENDING    = 'pending'
     STATUS_PROCESSING = 'processing'
     STATUS_DONE       = 'done'
@@ -22,6 +24,8 @@ class PayrollUpload(BaseModel):
     STATUS_PARTIAL    = 'partial'
 
     STATUS_CHOICES = [
+        (STATUS_APPROVAL_PENDING, 'Approval Pending'),
+        (STATUS_APPROVED,   'Approved'),
         (STATUS_PENDING,    'Pending'),
         (STATUS_PROCESSING, 'Processing'),
         (STATUS_DONE,       'Completed'),
