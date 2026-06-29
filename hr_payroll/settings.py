@@ -226,9 +226,10 @@ LMS_REQUEST_POOL_MAXSIZE = config('LMS_REQUEST_POOL_MAXSIZE', default=20, cast=i
 IDEMPOTENCY_KEY_TTL      = 60 * 60 * 24  # 24 hours
 
 # ── CORS ─────────────────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # allow any origin in dev; restricted in prod
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://hr.dimeapp.co.ke,http://localhost:3000',
+    default='https://hr.dimeapp.co.ke,http://localhost:3000,http://localhost:5000',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True

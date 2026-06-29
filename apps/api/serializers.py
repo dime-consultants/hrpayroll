@@ -17,18 +17,18 @@ class CheckoffOrganizationSerializer(serializers.ModelSerializer):
 
 
 class HRUserSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
     full_name = serializers.SerializerMethodField()
     organization_name = serializers.CharField(source='organization.name', read_only=True)
 
     class Meta:
         model = HRUser
-        fields = ('id', 'username', 'full_name', 'organization', 'organization_name',
+        fields = ('id', 'email', 'full_name', 'organization', 'organization_name',
                   'role', 'is_active', 'date_created')
         read_only_fields = ('id', 'date_created')
 
     def get_full_name(self, obj):
-        return obj.user.get_full_name() or obj.user.username
+        return obj.user.full_name or obj.user.email
 
 
 class HRUserCreateSerializer(serializers.Serializer):
@@ -83,7 +83,7 @@ class PayrollUploadSerializer(serializers.ModelSerializer):
 
     def get_uploaded_by_name(self, obj):
         if obj.uploaded_by:
-            return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+            return obj.uploaded_by.full_name or obj.uploaded_by.email
         return None
 
 
@@ -111,6 +111,8 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
             status=PayrollUpload.STATUS_APPROVAL_PENDING,
             **validated_data
         )
+        from apps.repayments.tasks import parse_payroll_upload
+        parse_payroll_upload.delay(str(upload.id))
         return upload
 
 
@@ -142,7 +144,7 @@ class RepaymentBatchSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj):
         if obj.approved_by:
-            return obj.approved_by.get_full_name() or obj.approved_by.username
+            return obj.approved_by.full_name or obj.approved_by.email
         return None
 
 
@@ -178,3 +180,5 @@ class DashboardSummarySerializer(serializers.Serializer):
     successful_amount = serializers.DecimalField(max_digits=18, decimal_places=2)
     pending_batches = serializers.IntegerField()
     failed_deductions = serializers.IntegerField()
+
+
