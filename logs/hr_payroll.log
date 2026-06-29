@@ -984,3 +984,350 @@ WARNING 2026-06-26 12:29:40,424 log 19884 24292 Forbidden: /api/v1/uploads/
 WARNING 2026-06-26 12:29:40,456 log 19884 24292 Not Found: /api/v1/uploads/ced40ecc-611d-4c19-a90b-c19fb30b6c36/
 WARNING 2026-06-26 12:29:40,667 log 19884 24292 Forbidden: /api/v1/uploads/
 WARNING 2026-06-26 12:29:40,762 log 19884 24292 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-29 10:04:05,218 log 28308 21156 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-29 10:04:05,219 log 28308 21156 "GET /api/v1/uploads/ HTTP/1.1" 401 172
+WARNING 2026-06-29 10:04:05,224 log 28308 5656 Unauthorized: /api/v1/uploads/
+WARNING 2026-06-29 10:04:05,225 log 28308 5656 "GET /api/v1/uploads/ HTTP/1.1" 401 172
+ERROR 2026-06-29 10:04:09,287 exceptions 28308 5656 Unhandled exception in <apps.api.views.HRTokenRefreshView object at 0x0000016971196C60>: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 503, in dispatch
+    self.initial(request, *args, **kwargs)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 422, in initial
+    self.check_throttles(request)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 365, in check_throttles
+    if not throttle.allow_request(request, self):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\throttling.py", line 123, in allow_request
+    self.history = self.cache.get(self.key, [])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+ERROR 2026-06-29 10:04:09,437 log 28308 5656 Internal Server Error: /api/v1/auth/refresh/
+ERROR 2026-06-29 10:04:09,437 log 28308 5656 "POST /api/v1/auth/refresh/ HTTP/1.1" 500 42
+ERROR 2026-06-29 10:04:18,835 exceptions 28308 5656 Unhandled exception in <apps.api.views.HRTokenObtainView object at 0x0000016970B2D9A0>: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 503, in dispatch
+    self.initial(request, *args, **kwargs)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 422, in initial
+    self.check_throttles(request)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 365, in check_throttles
+    if not throttle.allow_request(request, self):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\throttling.py", line 123, in allow_request
+    self.history = self.cache.get(self.key, [])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+ERROR 2026-06-29 10:04:18,835 log 28308 5656 Internal Server Error: /api/v1/auth/login/
+ERROR 2026-06-29 10:04:18,835 log 28308 5656 "POST /api/v1/auth/login/ HTTP/1.1" 500 42
+ERROR 2026-06-29 10:04:51,579 exceptions 28308 5656 Unhandled exception in <apps.api.views.HRTokenObtainView object at 0x0000016970B4F020>: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 503, in dispatch
+    self.initial(request, *args, **kwargs)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 422, in initial
+    self.check_throttles(request)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 365, in check_throttles
+    if not throttle.allow_request(request, self):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\throttling.py", line 123, in allow_request
+    self.history = self.cache.get(self.key, [])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+ERROR 2026-06-29 10:04:51,596 log 28308 5656 Internal Server Error: /api/v1/auth/login/
+ERROR 2026-06-29 10:04:51,606 log 28308 5656 "POST /api/v1/auth/login/ HTTP/1.1" 500 42
+WARNING 2026-06-29 10:10:45,668 log 9424 19896 Forbidden: /api/v1/dashboard/
+WARNING 2026-06-29 10:10:45,671 log 9424 19896 "GET /api/v1/dashboard/?period=2026-06 HTTP/1.1" 403 67
+WARNING 2026-06-29 10:10:45,699 log 9424 19896 Forbidden: /api/v1/dashboard/
+WARNING 2026-06-29 10:10:45,702 log 9424 19896 "GET /api/v1/dashboard/?period=2026-06 HTTP/1.1" 403 67
+WARNING 2026-06-29 10:10:51,569 log 9424 19896 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:10:51,571 log 9424 19896 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:10:51,580 log 9424 19896 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:10:51,581 log 9424 19896 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:11:00,044 log 9424 19896 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:11:00,059 log 9424 19896 "POST /api/v1/uploads/ HTTP/1.1" 403 52
+WARNING 2026-06-29 10:14:31,008 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:14:31,008 log 13652 26328 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:14:31,078 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:14:31,078 log 13652 26328 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:14:44,489 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:14:44,490 log 13652 26328 "POST /api/v1/uploads/ HTTP/1.1" 403 52
+WARNING 2026-06-29 10:15:13,994 log 13652 26328 Forbidden: /api/v1/dashboard/
+WARNING 2026-06-29 10:15:13,998 log 13652 26328 "GET /api/v1/dashboard/?period=2026-06 HTTP/1.1" 403 67
+WARNING 2026-06-29 10:15:14,050 log 13652 26328 Forbidden: /api/v1/dashboard/
+WARNING 2026-06-29 10:15:14,067 log 13652 26328 "GET /api/v1/dashboard/?period=2026-06 HTTP/1.1" 403 67
+WARNING 2026-06-29 10:15:21,814 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:15:21,836 log 13652 26328 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:15:21,852 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:15:21,858 log 13652 26328 "GET /api/v1/uploads/ HTTP/1.1" 403 67
+WARNING 2026-06-29 10:15:29,191 log 13652 26328 Forbidden: /api/v1/uploads/
+WARNING 2026-06-29 10:15:29,192 log 13652 26328 "POST /api/v1/uploads/ HTTP/1.1" 403 52
+ERROR 2026-06-29 10:19:03,314 exceptions 24532 27324 Unhandled exception in <apps.api.views.PayrollUploadListCreateView object at 0x000002233BC4D730>: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\utils\functional.py", line 32, in __call__
+    return self.__value__
+           ^^^^^^^^^^^^^^
+AttributeError: 'ChannelPromise' object has no attribute '__value__'. Did you mean: '__call__'?
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\transport\virtual\base.py", line 951, in create_channel
+    return self._avail_channels.pop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+IndexError: pop from empty list
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 855, in connect_check_health
+    sock = self.retry.call_with_retry(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\retry.py", line 116, in call_with_retry
+    return do()
+           ^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 856, in <lambda>
+    lambda: self._connect(), lambda error: self.disconnect(error)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 1306, in _connect
+    raise err
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 1290, in _connect
+    sock.connect(socket_address)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 474, in _reraise_as_library_errors
+    yield
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 461, in _ensure_connection
+    return retry_over_time(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\utils\functional.py", line 318, in retry_over_time
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 941, in _connection_factory
+    self._connection = self._establish_connection()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 863, in _establish_connection
+    conn = self.transport.establish_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\transport\virtual\base.py", line 975, in establish_connection
+    self._avail_channels.append(self.create_channel(self))
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\transport\virtual\base.py", line 953, in create_channel
+    channel = self.Channel(connection)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\transport\redis.py", line 757, in __init__
+    self.client.ping()
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\commands\core.py", line 1226, in ping
+    return self.execute_command("PING", **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\generics.py", line 246, in post
+    return self.create(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\hrpayrool\hr-backend\Dime-HR-Payroll\apps\api\views.py", line 191, in create
+    self.perform_create(serializer)
+  File "C:\Users\Charlie Charlie\Sites\hrpayrool\hr-backend\Dime-HR-Payroll\apps\api\views.py", line 183, in perform_create
+    upload = serializer.save()
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\rest_framework\serializers.py", line 210, in save
+    self.instance = self.create(validated_data)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\Sites\hrpayrool\hr-backend\Dime-HR-Payroll\apps\api\serializers.py", line 115, in create
+    parse_payroll_upload.delay(str(upload.id))
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\celery\app\task.py", line 463, in delay
+    return self.apply_async(args, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\celery\app\task.py", line 627, in apply_async
+    return app.send_task(
+           ^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\celery\app\base.py", line 969, in send_task
+    amqp.send_task_message(P, name, message, **options)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\celery\app\amqp.py", line 559, in send_task_message
+    ret = producer.publish(
+          ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\messaging.py", line 190, in publish
+    return _publish(
+           ^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 558, in _ensured
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\messaging.py", line 200, in _publish
+    channel = self.channel
+              ^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\messaging.py", line 224, in _get_channel
+    channel = self._channel = channel()
+                              ^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\utils\functional.py", line 34, in __call__
+    value = self.__value__ = self.__contract__()
+                             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\messaging.py", line 240, in <lambda>
+    channel = ChannelPromise(lambda: connection.default_channel)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 960, in default_channel
+    self._ensure_connection(**conn_opts)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 460, in _ensure_connection
+    with ctx():
+         ^^^^^
+  File "C:\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Charlie Charlie\AppData\Roaming\Python\Python312\site-packages\kombu\connection.py", line 478, in _reraise_as_library_errors
+    raise ConnectionError(str(exc)) from exc
+kombu.exceptions.OperationalError: Error 10061 connecting to localhost:6380. No connection could be made because the target machine actively refused it.
+ERROR 2026-06-29 10:19:03,485 log 24532 27324 Internal Server Error: /api/v1/uploads/
+ERROR 2026-06-29 10:19:03,485 log 24532 27324 "POST /api/v1/uploads/ HTTP/1.1" 500 42
+INFO 2026-06-29 10:23:37,611 tasks 9568 26892 parse_payroll_upload: upload=4f6c1494-6252-42d6-b230-02c430f6868d created=0 errors=259
+WARNING 2026-06-29 10:23:37,626 tasks 9568 26892 build_repayment_batch: no dispatchable deductions for upload 4f6c1494-6252-42d6-b230-02c430f6868d (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 10:23:37,720 trace 9568 26892 Task apps.repayments.tasks.build_repayment_batch[217067db-a1bd-4a40-935d-ce0b19f1507e] succeeded in 0.10899999999674037s: None
+INFO 2026-06-29 10:23:37,720 trace 9568 26892 Task apps.repayments.tasks.parse_payroll_upload[84becfbc-7370-42a5-a926-7b856d4952d7] succeeded in 0.26500000001396984s: None
+INFO 2026-06-29 11:00:48,140 tasks 17592 26696 parse_payroll_upload: upload=92612e9b-970e-4646-9acc-3cb1157ba122 created=0 errors=259
+WARNING 2026-06-29 11:00:48,146 tasks 17592 26696 build_repayment_batch: no dispatchable deductions for upload 92612e9b-970e-4646-9acc-3cb1157ba122 (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 11:00:48,515 trace 17592 26696 Task apps.repayments.tasks.build_repayment_batch[de029260-2a0c-47bb-af7b-baa7efe94861] succeeded in 0.375s: None
+INFO 2026-06-29 11:00:48,515 trace 17592 26696 Task apps.repayments.tasks.parse_payroll_upload[98a1f8bb-2653-47ea-8eca-e6292234736d] succeeded in 0.5309999999590218s: None
+INFO 2026-06-29 11:01:23,228 tasks 17592 26696 parse_payroll_upload: upload=6799266e-f327-42ed-9a21-54e806794853 created=0 errors=259
+WARNING 2026-06-29 11:01:23,244 tasks 17592 26696 build_repayment_batch: no dispatchable deductions for upload 6799266e-f327-42ed-9a21-54e806794853 (all may already be SUCCESS/SKIPPED)
+INFO 2026-06-29 11:01:23,244 trace 17592 26696 Task apps.repayments.tasks.build_repayment_batch[80a646a8-1dbd-4365-b38d-a218b29e5bee] succeeded in 0.0s: None
+INFO 2026-06-29 11:01:23,244 trace 17592 26696 Task apps.repayments.tasks.parse_payroll_upload[4246e3ea-01fe-4bfd-9f60-97e349760bdf] succeeded in 0.0940000000409782s: None
+WARNING 2026-06-29 11:17:03,242 log 23956 29272 Not Found: /favicon.ico
+WARNING 2026-06-29 11:17:03,242 basehttp 23956 29272 "GET /favicon.ico HTTP/1.1" 404 3370
