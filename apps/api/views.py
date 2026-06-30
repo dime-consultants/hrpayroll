@@ -5,6 +5,7 @@ from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status, filters
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -327,6 +328,85 @@ class UploadApprovalCallbackView(OrgScopedMixin, APIView):
 
     def post(self, request, pk):
         return Response({'detail': 'Not implemented.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+
+class PayrollTemplateDownloadView(APIView):
+    """GET /api/v1/uploads/template/ — download a blank payroll upload template."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from django.http import HttpResponse
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Payroll Upload"
+
+        # ── header row ──────────────────────────────────────────
+        headers = ["phone_number", "amount", "deduction_date"]
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="217346", end_color="217346", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True, size=11)
+        thin = Side(style="thin", color="AAAAAA")
+        cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for col, cell in enumerate(ws[1], start=1):
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = cell_border
+
+        # ── example rows ────────────────────────────────────────
+        examples = [
+            ["254712486391", 4500.00, "10/2/2026"],
+            ["254722813047", 7200.00, "10/2/2026"],
+            ["254733651829", 3100.00, "10/2/2026"],
+        ]
+        note_fill = PatternFill(start_color="F0F7F3", end_color="F0F7F3", fill_type="solid")
+        for row_data in examples:
+            ws.append(row_data)
+            for cell in ws[ws.max_row]:
+                cell.border = cell_border
+                cell.fill = note_fill
+
+        # ── column widths ────────────────────────────────────────
+        ws.column_dimensions["A"].width = 22   # phone_number
+        ws.column_dimensions["B"].width = 16   # amount
+        ws.column_dimensions["C"].width = 18   # deduction_date
+
+        # ── freeze header ────────────────────────────────────────
+        ws.freeze_panes = "A2"
+
+        # ── notes sheet ─────────────────────────────────────────
+        notes = wb.create_sheet("Instructions")
+        instructions = [
+            ["Field", "Format", "Example"],
+            ["phone_number", "Must start with 254 (no + or spaces)", "254712486391"],
+            ["amount",       "Numeric, no currency symbol",           "4500.00"],
+            ["deduction_date", "DD/MM/YYYY",                         "10/2/2026"],
+        ]
+        hdr_fill = PatternFill(start_color="217346", end_color="217346", fill_type="solid")
+        hdr_font = Font(color="FFFFFF", bold=True)
+        for r_idx, row_data in enumerate(instructions, start=1):
+            notes.append(row_data)
+            for cell in notes[r_idx]:
+                cell.border = cell_border
+                if r_idx == 1:
+                    cell.fill = hdr_fill
+                    cell.font = hdr_font
+
+        notes.column_dimensions["A"].width = 20
+        notes.column_dimensions["B"].width = 42
+        notes.column_dimensions["C"].width = 18
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="payroll_upload_template.xlsx"'
+        wb.save(response)
+        return response
 
 
 class HealthCheckView(APIView):
