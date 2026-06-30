@@ -78,7 +78,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: "docker-compose.prod.yml,nginx/,docker/"
-          target: "/root/tools/dime-hr-payroll"
+          target: "/home/issa/Dime-HR-Payroll"
           timeout: 120s
 
       - name: Deploy on remote
@@ -92,7 +92,7 @@ jobs:
           envs: IMAGE_TAG
           script: |
             set -e
-            cd /root/tools/dime-hr-payroll
+            cd /home/issa/Dime-HR-Payroll
             export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
             export IMAGE_NAME="ghcr.io/kib4n4/dime-hr-payroll"
 
@@ -109,7 +109,7 @@ jobs:
             # DB_USER / DB_NAME are sourced from .env.prod, which already
             # lives on the server and is never synced from the repo.
             set -a; . ./.env.prod; set +a
-            BACKUP_DIR=/root/backups/db
+            BACKUP_DIR=/home/issa/backups/db
             mkdir -p "$BACKUP_DIR"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
