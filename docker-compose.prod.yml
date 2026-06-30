@@ -56,12 +56,6 @@ services:
       - logs_volume:/app/logs
     expose:
       - "8080"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/admin/login/')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
     networks:
       - internal
       - external
