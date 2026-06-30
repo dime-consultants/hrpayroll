@@ -1,0 +1,149 @@
+name: CI/CD — Docker build, push and deploy
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: kib4n4/dime-hr-payroll
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set short SHA tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One image, built once from docker/Dockerfile.prod, reused by web,
+      # celery_worker, celery_beat, and flower in docker-compose.prod.yml
+      # (they all build from the same Dockerfile already — this just lets
+      # the server pull instead of rebuild, which is what was eating disk
+      # space and /run on every deploy).
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Compose file + nginx conf + docker/ scripts live in the repo and get
+      # synced to the server on every deploy, so the remote directory can
+      # never drift from what's in git. .env.prod is NOT synced — it stays
+      # on the server and is managed manually (it holds secrets).
+      - name: Sync compose files to server
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "docker-compose.prod.yml,nginx/,docker/"
+          target: "/root/tools/dime-hr-payroll"
+          timeout: 120s
+
+      - name: Deploy on remote
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 15m
+          envs: IMAGE_TAG
+          script: |
+            set -e
+            cd /root/tools/dime-hr-payroll
+            export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+            export IMAGE_NAME="ghcr.io/kib4n4/dime-hr-payroll"
+
+            echo "Deploying tag: ${IMAGE_TAG}"
+
+            # ── 1. Free disk space if low (less than 2GB free) ──────────────
+            FREE_KB=$(df / | awk 'NR==2 {print $4}')
+            if [ "$FREE_KB" -lt 2097152 ]; then
+              echo "Low disk space — pruning Docker..."
+              timeout 120 docker system prune -af
+            fi
+
+            # ── 2. Backup DB before deploy (skip if DB not running) ──────────
+            # DB_USER / DB_NAME are sourced from .env.prod, which already
+            # lives on the server and is never synced from the repo.
+            set -a; . ./.env.prod; set +a
+            BACKUP_DIR=/root/backups/db
+            mkdir -p "$BACKUP_DIR"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+            if docker compose -f docker-compose.prod.yml ps db 2>/dev/null | grep -q "healthy"; then
+              echo "Backing up database..."
+              timeout 120 docker compose -f docker-compose.prod.yml exec -T db pg_dump \
+                -U "${DB_USER}" "${DB_NAME}" \
+                | gzip > "$BACKUP_DIR/backup_${TIMESTAMP}.sql.gz"
+              ls -tp "$BACKUP_DIR"/*.sql.gz | grep -v '/$' | tail -n +8 | xargs -r rm --
+              echo "Backup complete."
+            else
+              echo "DB not running — skipping backup (first deploy or after prune)."
+            fi
+
+            # ── 3. Pull the exact tagged image ────────────────────────────────
+            echo "Pulling ${IMAGE_NAME}:${IMAGE_TAG}..."
+            timeout 300 docker pull "${IMAGE_NAME}:${IMAGE_TAG}"
+            docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:latest"
+
+            # ── 4. Restart everything ─────────────────────────────────────────
+            # Migrations + collectstatic + superuser creation already run
+            # inline in docker/entrypoint.prod.sh when `web` starts, so a
+            # separate one-shot migrate step isn't needed here. `web` will
+            # block briefly on startup running them before gunicorn execs.
+            echo "Restarting services..."
+            timeout 300 docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # ── 5. Give web a moment to come up, then show its recent logs ───
+            # No health endpoint exists yet, so we can't poll for "healthy".
+            # This just gives a short grace period and surfaces the latest
+            # logs so a broken deploy is visible in the Actions run output
+            # instead of silently succeeding.
+            sleep 15
+            echo "Recent web logs:"
+            docker compose -f docker-compose.prod.yml logs --tail=50 web
+
+            echo "Deploy complete. Live tag: ${IMAGE_TAG}"
