@@ -35,10 +35,10 @@ python manage.py shell -c "
 from django.contrib.auth import get_user_model
 import os
 User = get_user_model()
-if not User.objects.filter(username='admin').exists():
+admin_email = os.environ.get('DJANGO_ADMIN_EMAIL', 'admin@hr.dimeapp.co.ke')
+if not User.objects.filter(email=admin_email).exists():
     User.objects.create_superuser(
-        username='admin',
-        email=os.environ.get('DJANGO_ADMIN_EMAIL', 'admin@hr.dimeapp.co.ke'),
+        email=admin_email,
         password=os.environ.get('DJANGO_ADMIN_PASSWORD', 'changeme123!')
     )
     print('Superuser created')
