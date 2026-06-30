@@ -47,9 +47,7 @@ services:
 
   # ── Django / Gunicorn ─────────────────────────────────────
   web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.prod
+    image: ghcr.io/kib4n4/dime-hr-payroll:latest
     restart: unless-stopped
     <<: [*app-env, *outbound-dns]
     volumes:
@@ -58,21 +56,24 @@ services:
       - logs_volume:/app/logs
     expose:
       - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/admin/login/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     networks:
       - internal
       - external
 
   # ── Celery Worker ─────────────────────────────────────────
   celery_worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.prod
+    image: ghcr.io/kib4n4/dime-hr-payroll:latest
     restart: unless-stopped
     <<: [*app-env, *outbound-dns]
     entrypoint: /app/docker/entrypoint.celery.sh
     command: celery -A hr_payroll worker --loglevel=info --concurrency=4 --prefetch-multiplier=1 --max-tasks-per-child=100 -Q celery,repayments,uploads
     volumes:
-      - .:/app
       - media_volume:/app/media
       - logs_volume:/app/logs
     networks:
@@ -81,15 +82,12 @@ services:
 
   # ── Celery Beat ───────────────────────────────────────────
   celery_beat:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.prod
+    image: ghcr.io/kib4n4/dime-hr-payroll:latest
     restart: unless-stopped
     <<: [*app-env, *outbound-dns]
     entrypoint: /app/docker/entrypoint.celery.sh
     command: celery -A hr_payroll beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
-      - .:/app
       - media_volume:/app/media
       - logs_volume:/app/logs
     networks:
@@ -98,9 +96,7 @@ services:
 
   # ── Flower ────────────────────────────────────────────────
   flower:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.prod
+    image: ghcr.io/kib4n4/dime-hr-payroll:latest
     restart: unless-stopped
     <<: [*app-env, *outbound-dns]
     entrypoint: /app/docker/entrypoint.celery.sh
