@@ -95,8 +95,16 @@ jobs:
             cd /home/issa/Dime-HR-Payroll
             export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
             export IMAGE_NAME="ghcr.io/kib4n4/dime-hr-payroll"
+            export GHCR_USERNAME="${{ github.actor }}"
+            export GHCR_PAT="${{ secrets.GHCR_PAT }}"
 
             echo "Deploying tag: ${IMAGE_TAG}"
+
+            # ── 0. Authenticate to GHCR so the server can pull the image ────
+            # The build job's GITHUB_TOKEN is scoped to that run only — the
+            # server needs its own credentials to pull afterward, via a PAT
+            # with read:packages scope.
+            echo "${GHCR_PAT}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
 
             # ── 1. Free disk space if low (less than 2GB free) ──────────────
             FREE_KB=$(df / | awk 'NR==2 {print $4}')
