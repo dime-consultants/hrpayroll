@@ -106,9 +106,12 @@ jobs:
             fi
 
             # ── 2. Backup DB before deploy (skip if DB not running) ──────────
-            # DB_USER / DB_NAME are sourced from .env.prod, which already
-            # lives on the server and is never synced from the repo.
-            set -a; . ./.env.prod; set +a
+            # DB_USER / DB_NAME are pulled directly out of .env.prod without
+            # sourcing the whole file as shell — values in .env.prod can
+            # contain characters (!, [, ], {, }, %, etc.) that break a plain
+            # `. ./.env.prod`, since bash tries to interpret them.
+            DB_USER=$(grep -E '^DB_USER=' .env.prod | head -n1 | cut -d '=' -f2-)
+            DB_NAME=$(grep -E '^DB_NAME=' .env.prod | head -n1 | cut -d '=' -f2-)
             BACKUP_DIR=/home/issa/backups/db
             mkdir -p "$BACKUP_DIR"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
