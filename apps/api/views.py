@@ -14,6 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser, AuditLog
 from apps.payroll.models import PayrollUpload, SalaryDeduction
 from apps.repayments.models import RepaymentBatch, RepaymentRecord
+from apps.api.lms_client import get_customer_names_bulk
 
 from .permissions import IsHRUser, IsHRAdmin, BelongsToOrganization
 from .serializers import (
@@ -225,6 +226,13 @@ class PayrollUploadDetailView(OrgScopedMixin, generics.RetrieveDestroyAPIView):
 
 
 class SalaryDeductionListView(OrgScopedMixin, generics.ListAPIView):
+    """
+    Full customer names are resolved live from the LMS's exclusive-details
+    endpoint (see lms_client.get_customer_names_bulk) rather than a local
+    customer table. To keep this cheap, the lookup happens AFTER pagination
+    (only for the current page's rows) and only for distinct phone numbers,
+    with each result cached in Redis by lms_client.
+    """
     serializer_class = SalaryDeductionSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'deduction_date', 'upload']
@@ -237,6 +245,24 @@ class SalaryDeductionListView(OrgScopedMixin, generics.ListAPIView):
             'organization', 'upload'
         )
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        target = page if page is not None else queryset
+
+        phone_numbers = list({d.phone_number for d in target})
+        self._customer_names = get_customer_names_bulk(phone_numbers)
+
+        serializer = self.get_serializer(target, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['customer_names'] = getattr(self, '_customer_names', {})
+        return context
+
 
 class SalaryDeductionDetailView(OrgScopedMixin, generics.RetrieveAPIView):
     serializer_class = SalaryDeductionSerializer
@@ -244,6 +270,20 @@ class SalaryDeductionDetailView(OrgScopedMixin, generics.RetrieveAPIView):
 
     def get_queryset(self):
         return SalaryDeduction.objects.filter(organization=self.get_org())
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Single-object retrieve — resolve just this one phone number.
+        obj = getattr(self, '_object_for_context', None)
+        if obj is None:
+            try:
+                obj = self.get_object()
+                self._object_for_context = obj
+            except Exception:
+                obj = None
+        if obj is not None:
+            context['customer_names'] = get_customer_names_bulk([obj.phone_number])
+        return context
 
 
 class RepaymentBatchListView(OrgScopedMixin, generics.ListAPIView):

@@ -117,15 +117,35 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
 
 
 class SalaryDeductionSerializer(serializers.ModelSerializer):
+    """
+    full_name is resolved from the LMS's customer-exclusive-details endpoint
+    (see apps.api.lms_client.get_customer_names_bulk), keyed by phone_number,
+    and passed in via serializer context as 'customer_names'. This avoids
+    maintaining a separate mirrored customer table entirely.
+
+    If the LMS has no exclusive match for this phone number (not found, or
+    the customer is shared across multiple checkoff organisations — 403.002),
+    we fall back to whatever name string came in on the uploaded spreadsheet
+    (employee_name) rather than showing a blank.
+    """
+    full_name = serializers.SerializerMethodField()
+
     class Meta:
         model = SalaryDeduction
         fields = (
-            'id', 'upload', 'organization', 'phone_number', 'employee_name',
+            'id', 'upload', 'organization', 'phone_number', 'full_name',
             'employee_id', 'amount', 'deduction_date', 'reference', 'status',
             'attempts', 'last_attempt_at', 'lms_response', 'failure_reason',
             'row_number', 'idempotency_key', 'date_created'
         )
         read_only_fields = fields
+
+    def get_full_name(self, obj):
+        customer_names = self.context.get('customer_names', {})
+        customer = customer_names.get(obj.phone_number)
+        if customer and customer.get('full_name'):
+            return customer['full_name']
+        return obj.employee_name
 
 
 class RepaymentBatchSerializer(serializers.ModelSerializer):
@@ -180,5 +200,3 @@ class DashboardSummarySerializer(serializers.Serializer):
     successful_amount = serializers.DecimalField(max_digits=18, decimal_places=2)
     pending_batches = serializers.IntegerField()
     failed_deductions = serializers.IntegerField()
-
-

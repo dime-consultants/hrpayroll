@@ -5,17 +5,24 @@ Guarantees:
   - Shared connection pool across worker threads (lru_cache Session)
   - Separate non-retrying session for OAuth token endpoint
   - Per-phone Redis mutex → no concurrent duplicate repayments
-  - Amount capped at loan balance → no negative balances
   - Idempotency table check → no re-send on retry
   - Exponential backoff retries via urllib3 Retry
   - OAuth2 consumer key/secret token auth with auto-refresh on 401
   - Circuit breaker to prevent retry storms on LMS outage
   - Intelligent error classification (network vs business errors)
+  - Customer name lookups (exclusive-membership only) for HR-facing lists,
+    with Redis caching and parallel batch fetch — no local customer table
+
+NOTE: amount is sent to the LMS as requested. The LMS enforces its own
+balance cap server-side; we intentionally do not cap here (see
+send_repayment step 3) since a stale local balance read was truncating
+legitimate full repayments.
 """
 import logging
 import time
 from decimal import Decimal
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from django.conf import settings
@@ -37,6 +44,8 @@ from .error_handling import (
 log = logging.getLogger(__name__)
 
 _LOCK_TTL = 60  # seconds
+_CUSTOMER_CACHE_TTL = 60 * 60 * 24       # 24h — names change rarely
+_CUSTOMER_NEGATIVE_TTL = 60 * 5          # 5 min — don't hammer on repeated misses
 
 
 # ─────────────────────────────────────────────────────────────
@@ -283,7 +292,7 @@ class LMSRepaymentResult:
 
 
 # ─────────────────────────────────────────────────────────────
-# Public entry point
+# Public entry point — repayments
 # ─────────────────────────────────────────────────────────────
 
 def send_repayment(
@@ -301,7 +310,8 @@ def send_repayment(
       1. Check circuit breaker (fail fast if LMS is down)
       2. Acquire per-phone Redis mutex (prevents race conditions)
       3. Idempotency check (prevents duplicate sends on retry)
-      4. Cap amount at current loan balance (prevents negative balances)
+      4. Reject non-positive amounts (LMS itself enforces the balance cap —
+         we do NOT cap client-side; see module docstring)
       5. POST to LMS /api/partner/pay-loan/
       6. Release mutex in finally block regardless of outcome
 
@@ -352,10 +362,11 @@ def send_repayment(
         except IdempotencyKey.DoesNotExist:
             pass
 
-        # ── 3. Cap amount at loan balance ──────────────────
-        capped = _cap_amount_to_balance(phone_number, amount)
-        if capped <= Decimal('0'):
-            log.info('No outstanding balance for %s — skipping', phone_number)
+        # ── 3. Send the requested amount as-is ─────────────
+        # LMS enforces the balance cap server-side. We only guard against
+        # nonsensical non-positive amounts here.
+        if amount <= Decimal('0'):
+            log.info('Non-positive amount for %s — skipping', phone_number)
             return LMSRepaymentResult(
                 success=False, code='no_balance',
                 amount_sent=Decimal('0'), response_body={},
@@ -365,7 +376,7 @@ def send_repayment(
         # ── 4. POST to LMS ─────────────────────────────────
         payload = {
             'phone_number': phone_number,
-            'amount': float(capped),
+            'amount': float(amount),
             'collection_date': collection_date,
         }
 
@@ -397,6 +408,16 @@ def send_repayment(
             code = str(body.get('code', resp.status_code))
             success = code.startswith('200')
 
+            # LMS may report the amount it actually applied (e.g. after its
+            # own internal cap). Fall back to 0 if it isn't present — we do
+            # NOT assume the full requested amount went through unless LMS
+            # says so explicitly.
+            lms_reported_amount = (
+                body.get('data', {}).get('amount_applied')
+                if isinstance(body.get('data'), dict) else None
+            )
+            amount_sent = Decimal(str(lms_reported_amount)) if lms_reported_amount is not None else Decimal('0')
+
             # Classify the response — only meaningful on failure
             error_class = classify_lms_response_error(code, body) if not success else None
 
@@ -408,7 +429,7 @@ def send_repayment(
 
             log.info(
                 'LMS repayment | phone=%s amount=%s code=%s %dms error_class=%s',
-                phone_number, capped, code, duration_ms,
+                phone_number, amount, code, duration_ms,
                 error_class.value if error_class else 'none',
             )
 
@@ -416,13 +437,13 @@ def send_repayment(
                 key=idempotency_key,
                 organization_code=organization_code,
                 status=IdempotencyKey.STATUS_SUCCESS if success else IdempotencyKey.STATUS_FAILED,
-                response_payload={**body, 'amount_sent': str(capped)},
+                response_payload={**body, 'amount_sent': str(amount_sent)},
             )
 
             return LMSRepaymentResult(
                 success=success,
                 code=code,
-                amount_sent=capped if success else Decimal('0'),
+                amount_sent=amount_sent if success else Decimal('0'),
                 response_body=body,
                 duration_ms=duration_ms,
                 error='' if success else body.get('message', 'LMS error'),
@@ -517,13 +538,29 @@ def send_repayment(
 
 
 # ─────────────────────────────────────────────────────────────
-# Helpers
+# Public entry point — customer name lookups (exclusive membership only)
 # ─────────────────────────────────────────────────────────────
 
-def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
+def get_customer_exclusive(phone_number: str) -> dict | None:
+    """
+    Fetch a customer's name from the LMS partner endpoint, restricted to
+    customers who belong exclusively to this partner (i.e. not shared
+    across multiple checkoff organisations).
+    Endpoint: POST /api/partner/customer-exclusive-details/
+
+    Returns None if the customer isn't found, isn't exclusive to us
+    (403.002 — shared across orgs), or the call fails. Successful lookups
+    and confirmed misses are both cached in Redis, since this can be
+    called once per unique phone number on every list page render.
+    """
+    cache_key = f'lms:customer_exclusive:{phone_number}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None  # cached {} means "confirmed not available"
+
     try:
         resp = _get_session().post(
-            f'{settings.LMS_BASE_URL}/api/partner/customer-loans/',
+            f'{settings.LMS_BASE_URL}/api/partner/customer-exclusive-details/',
             json={'phone_number': phone_number},
             headers=_headers(),
             timeout=min(settings.LMS_TIMEOUT, 10),
@@ -532,34 +569,58 @@ def _cap_amount_to_balance(phone_number: str, requested: Decimal) -> Decimal:
         if resp.status_code == 401:
             invalidate_token_cache()
             resp = _get_session().post(
-                f'{settings.LMS_BASE_URL}/api/partner/customer-loans/',
+                f'{settings.LMS_BASE_URL}/api/partner/customer-exclusive-details/',
                 json={'phone_number': phone_number},
                 headers=_headers(),
                 timeout=min(settings.LMS_TIMEOUT, 10),
                 verify=True,
             )
-        loans = _safe_json(resp).get('data', [])
-        active = [l for l in loans if l.get('loan_status_id') == 1]
-        if not active:
-            return Decimal('0')
 
-        # Sort oldest first — same order register_repayment uses
-        from datetime import datetime
-        active.sort(key=lambda l: datetime.strptime(l['loan_released_date'], '%d/%m/%Y'))
+        body = _safe_json(resp)
+        code = str(body.get('code', resp.status_code))
 
-        # Cap against oldest loan only — register_repayment waterfall
-        # will handle spillover to the next loan if needed
-        oldest = active[0]
-        balance = Decimal(str(oldest.get('balance_amount', 0)))
-        return min(requested, balance)
+        if code.startswith('200'):
+            data = body.get('data', {})
+            full_name = ' '.join(filter(None, [
+                data.get('first_name'), data.get('other_name'), data.get('last_name'),
+            ]))
+            result = {
+                'full_name': full_name,
+                'first_name': data.get('first_name', ''),
+                'last_name': data.get('last_name', ''),
+            }
+            cache.set(cache_key, result, timeout=_CUSTOMER_CACHE_TTL)
+            return result
+
+        # 404.x (not found) or 403.002 (shared across orgs) — cache the miss briefly
+        log.info('customer_exclusive_details %s → %s: %s', phone_number, code, body.get('message'))
+        cache.set(cache_key, {}, timeout=_CUSTOMER_NEGATIVE_TTL)
+        return None
 
     except Exception as exc:
-        log.warning(
-            'Could not fetch balance for %s: %s — using requested amount as fallback',
-            phone_number, exc,
-        )
-        return requested
+        log.warning('get_customer_exclusive failed for %s: %s', phone_number, exc)
+        return None  # not cached — a transient failure shouldn't stick for 5 min
 
+
+def get_customer_names_bulk(phone_numbers: list[str]) -> dict[str, dict | None]:
+    """Fetch multiple customers concurrently — used by list views to avoid N sequential calls."""
+    results = {}
+    if not phone_numbers:
+        return results
+    with ThreadPoolExecutor(max_workers=min(len(phone_numbers), 10)) as executor:
+        futures = {executor.submit(get_customer_exclusive, p): p for p in phone_numbers}
+        for future in as_completed(futures):
+            phone = futures[future]
+            try:
+                results[phone] = future.result()
+            except Exception:
+                results[phone] = None
+    return results
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────
 
 def _safe_json(resp: requests.Response) -> dict:
     try:
