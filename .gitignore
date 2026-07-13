@@ -14,6 +14,8 @@ __pycache__/
 *.pdb
 *.egg-info/
 *.egg
+*.py[cod]
+*$py.class
 
 # --- Virtual environments ---
 venv/
