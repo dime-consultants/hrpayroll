@@ -17,18 +17,18 @@ class CheckoffOrganizationSerializer(serializers.ModelSerializer):
 
 
 class HRUserSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
     full_name = serializers.SerializerMethodField()
     organization_name = serializers.CharField(source='organization.name', read_only=True)
 
     class Meta:
         model = HRUser
-        fields = ('id', 'username', 'full_name', 'organization', 'organization_name',
+        fields = ('id', 'email', 'full_name', 'organization', 'organization_name',
                   'role', 'is_active', 'date_created')
         read_only_fields = ('id', 'date_created')
 
     def get_full_name(self, obj):
-        return obj.user.get_full_name() or obj.user.username
+        return obj.user.full_name or obj.user.email
 
 
 class HRUserCreateSerializer(serializers.Serializer):
@@ -83,7 +83,7 @@ class PayrollUploadSerializer(serializers.ModelSerializer):
 
     def get_uploaded_by_name(self, obj):
         if obj.uploaded_by:
-            return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+            return obj.uploaded_by.full_name or obj.uploaded_by.email
         return None
 
 
@@ -98,8 +98,8 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f'Only {", ".join(allowed)} files are accepted.'
             )
-        if value.size > 10 * 1024 * 1024:
-            raise serializers.ValidationError('File must be under 10MB.')
+        if value.size > 50 * 1024 * 1024:
+            raise serializers.ValidationError('File must be under 50MB.')
         return value
 
     def create(self, validated_data):
@@ -108,6 +108,7 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
             organization=request.hr_organization,
             uploaded_by=request.user,
             original_filename=validated_data['file'].name,
+            status=PayrollUpload.STATUS_APPROVAL_PENDING,
             **validated_data
         )
         from apps.repayments.tasks import parse_payroll_upload
@@ -116,15 +117,35 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
 
 
 class SalaryDeductionSerializer(serializers.ModelSerializer):
+    """
+    full_name is resolved from the LMS's customer-exclusive-details endpoint
+    (see apps.api.lms_client.get_customer_names_bulk), keyed by phone_number,
+    and passed in via serializer context as 'customer_names'. This avoids
+    maintaining a separate mirrored customer table entirely.
+
+    If the LMS has no exclusive match for this phone number (not found, or
+    the customer is shared across multiple checkoff organisations — 403.002),
+    we fall back to whatever name string came in on the uploaded spreadsheet
+    (employee_name) rather than showing a blank.
+    """
+    full_name = serializers.SerializerMethodField()
+
     class Meta:
         model = SalaryDeduction
         fields = (
-            'id', 'upload', 'organization', 'phone_number', 'employee_name',
+            'id', 'upload', 'organization', 'phone_number', 'full_name',
             'employee_id', 'amount', 'deduction_date', 'reference', 'status',
             'attempts', 'last_attempt_at', 'lms_response', 'failure_reason',
             'row_number', 'idempotency_key', 'date_created'
         )
         read_only_fields = fields
+
+    def get_full_name(self, obj):
+        customer_names = self.context.get('customer_names', {})
+        customer = customer_names.get(obj.phone_number)
+        if customer and customer.get('full_name'):
+            return customer['full_name']
+        return obj.employee_name
 
 
 class RepaymentBatchSerializer(serializers.ModelSerializer):
@@ -143,7 +164,7 @@ class RepaymentBatchSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj):
         if obj.approved_by:
-            return obj.approved_by.get_full_name() or obj.approved_by.username
+            return obj.approved_by.full_name or obj.approved_by.email
         return None
 
 

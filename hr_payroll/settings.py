@@ -92,37 +92,53 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'hr_payroll.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='hr_payroll'),
-        'USER': config('DB_USER', default='hr_payroll_user'),
-        'PASSWORD': config('DB_PASSWORD', default='securepassword'),
-        'HOST': config('DB_HOST', default='db'),
-        'PORT': config('DB_PORT', default='5432'),
-        'CONN_MAX_AGE': 60,
-        'OPTIONS': {'connect_timeout': 10},
+if config('USE_SQLITE', default=False, cast=bool):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='hr_payroll'),
+            'USER': config('DB_USER', default='hr_payroll_user'),
+            'PASSWORD': config('DB_PASSWORD', default='securepassword'),
+            'HOST': config('DB_HOST', default='db'),
+            'PORT': config('DB_PORT', default='5432'),
+            'CONN_MAX_AGE': 60,
+            'OPTIONS': {'connect_timeout': 10},
+        }
+    }
 
 REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
+USE_REDIS = config('USE_REDIS', default=True, cast=bool)
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': REDIS_URL,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'MAX_ENTRIES': 10000,
-            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
-        },
-        'KEY_PREFIX': 'hr_payroll',
-        'TIMEOUT': 300,
+if USE_REDIS:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'MAX_ENTRIES': 10000,
+                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+            },
+            'KEY_PREFIX': 'hr_payroll',
+            'TIMEOUT': 300,
+        }
     }
-}
-
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -187,6 +203,10 @@ SIMPLE_JWT = {
 
 # ── CELERY ───────────────────────────────────────────────────
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL)
+
+if not USE_REDIS:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_CACHE_BACKEND = 'django-cache'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -226,9 +246,10 @@ LMS_REQUEST_POOL_MAXSIZE = config('LMS_REQUEST_POOL_MAXSIZE', default=20, cast=i
 IDEMPOTENCY_KEY_TTL      = 60 * 60 * 24  # 24 hours
 
 # ── CORS ─────────────────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # allow any origin in dev; restricted in prod
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://hr.dimeapp.co.ke,http://localhost:3000',
+    default='https://hr.dimeapp.co.ke,http://localhost:3000,http://localhost:5000',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
