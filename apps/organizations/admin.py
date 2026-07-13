@@ -35,9 +35,9 @@ class CheckoffOrganizationMirrorAdmin(BaseModelAdmin):
 
 @admin.register(HRUser)
 class HRUserAdmin(BaseModelAdmin):
-    list_display = ('get_full_name', 'get_username', 'organization', 'role', 'is_active', 'date_created')
+    list_display = ('get_full_name', 'get_email', 'organization', 'role', 'is_active', 'date_created')
     list_filter = ('role', 'is_active', 'organization')
-    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'organization__name')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name', 'organization__name')
 
     fieldsets = (
         ('User', {'fields': ('user', 'organization', 'role', 'is_active')}),
@@ -46,18 +46,18 @@ class HRUserAdmin(BaseModelAdmin):
 
     @display(description='Full Name')
     def get_full_name(self, obj):
-        return obj.user.get_full_name() or obj.user.username
+        return obj.user.full_name or obj.user.email
 
-    @display(description='Username')
-    def get_username(self, obj):
-        return obj.user.username
+    @display(description='Email')
+    def get_email(self, obj):
+        return obj.user.email
 
 
 @admin.register(AuditLog)
 class AuditLogAdmin(BaseModelAdmin):
     list_display = ('timestamp', 'actor', 'organization', 'action', 'object_id', 'ip_address')
     list_filter = ('action', 'organization')
-    search_fields = ('actor__username', 'description', 'object_id')
+    search_fields = ('actor__email', 'description', 'object_id')
     readonly_fields = (
         'id', 'actor', 'organization', 'action', 'object_id',
         'description', 'ip_address', 'metadata', 'timestamp',
