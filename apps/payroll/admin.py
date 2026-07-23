@@ -21,6 +21,12 @@ REPROCESSABLE_STATUSES = {
     PayrollUpload.STATUS_PENDING,     # never picked up
 }
 
+# Uploads land here straight from the UI and wait for an admin to kick off
+# processing via the "Process selected uploads" action below.
+PROCESSABLE_STATUSES = {
+    PayrollUpload.STATUS_APPROVAL_PENDING,
+}
+
 
 class SalaryDeductionInline(TabularInline):
     model = SalaryDeduction
@@ -47,7 +53,7 @@ class PayrollUploadAdmin(ModelAdmin):
     )
     date_hierarchy = 'date_created'
     inlines = [SalaryDeductionInline]
-    actions = ['reprocess_uploads']
+    actions = ['process_uploads', 'reprocess_uploads']
 
     fieldsets = (
         ('Upload Details', {'fields': ('organization', 'payroll_period', 'file', 'notes')}),
@@ -84,6 +90,37 @@ class PayrollUploadAdmin(ModelAdmin):
     @display(description='Successes')
     def success_rows_display(self, obj):
         return obj.success_rows
+
+    @admin.action(description='▶ Process selected uploads')
+    def process_uploads(self, request, queryset):
+        from apps.repayments.tasks import parse_payroll_upload
+
+        queued, skipped = [], []
+
+        for upload in queryset:
+            if upload.status not in PROCESSABLE_STATUSES:
+                skipped.append(f'#{str(upload.id)[:8]} ({upload.get_status_display()})')
+                continue
+
+            task = parse_payroll_upload.delay(str(upload.id))
+
+            upload.celery_task_id = task.id
+            upload.save(update_fields=['celery_task_id'])
+
+            queued.append(f'#{str(upload.id)[:8]}')
+
+        if queued:
+            self.message_user(
+                request,
+                f'Queued processing for {len(queued)} upload(s): {", ".join(queued)}.',
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f'Skipped {len(skipped)} upload(s) not awaiting approval: {", ".join(skipped)}.',
+                messages.WARNING,
+            )
 
     @admin.action(description='↺ Reprocess selected uploads (resets stuck / failed)')
     def reprocess_uploads(self, request, queryset):
