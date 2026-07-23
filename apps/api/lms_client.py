@@ -416,7 +416,11 @@ def send_repayment(
                 body.get('data', {}).get('amount_applied')
                 if isinstance(body.get('data'), dict) else None
             )
-            amount_sent = Decimal(str(lms_reported_amount)) if lms_reported_amount is not None else Decimal('0')
+            if success:
+                amount_sent = Decimal(str(lms_reported_amount)) if lms_reported_amount is not None else amount
+            else:
+                amount_sent = Decimal('0')
+            
 
             # Classify the response — only meaningful on failure
             error_class = classify_lms_response_error(code, body) if not success else None
@@ -443,7 +447,7 @@ def send_repayment(
             return LMSRepaymentResult(
                 success=success,
                 code=code,
-                amount_sent=amount_sent if success else Decimal('0'),
+                amount_sent=amount_sent,
                 response_body=body,
                 duration_ms=duration_ms,
                 error='' if success else body.get('message', 'LMS error'),
