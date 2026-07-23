@@ -105,16 +105,15 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context['request']
-        upload = PayrollUpload.objects.create(
+        # Processing is not auto-triggered — it stays APPROVAL_PENDING until
+        # an admin runs the "Process selected uploads" action in Django admin.
+        return PayrollUpload.objects.create(
             organization=request.hr_organization,
             uploaded_by=request.user,
             original_filename=validated_data['file'].name,
             status=PayrollUpload.STATUS_APPROVAL_PENDING,
             **validated_data
         )
-        from apps.repayments.tasks import parse_payroll_upload
-        parse_payroll_upload.delay(str(upload.id))
-        return upload
 
 
 class SalaryDeductionSerializer(serializers.ModelSerializer):
