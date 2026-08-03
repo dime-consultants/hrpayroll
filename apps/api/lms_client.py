@@ -656,3 +656,202 @@ def _upsert_idempotency(
         )
     except Exception as exc:
         log.warning('Failed to upsert idempotency key %s: %s', key[:16], exc)
+
+def get_customer_balances(phone_number: str) -> dict | None:
+    """
+    POST /api/partner/customer-balances/
+    Returns {"accessible_loan_limit": "...", "loan_balance": "..."} or None on failure.
+    Used by the loan request pipeline to gate eligibility before submitting to LMS.
+    """
+    cache_key = f'lms:customer_balances:{phone_number}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    try:
+        resp = _get_session().post(
+            f'{settings.LMS_BASE_URL}/api/partner/customer-balances/',
+            json={'phone_number': phone_number},
+            headers=_headers(),
+            timeout=min(settings.LMS_TIMEOUT, 10),
+            verify=True,
+        )
+        if resp.status_code == 401:
+            invalidate_token_cache()
+            resp = _get_session().post(
+                f'{settings.LMS_BASE_URL}/api/partner/customer-balances/',
+                json={'phone_number': phone_number},
+                headers=_headers(),
+                timeout=min(settings.LMS_TIMEOUT, 10),
+                verify=True,
+            )
+
+        body = _safe_json(resp)
+        if str(body.get('code', '')).startswith('200'):
+            data = body.get('data', {})
+            # Cache briefly — balances change after each loan/repayment
+            cache.set(cache_key, data, timeout=60 * 5)  # 5 min
+            return data
+
+        log.info('customer_balances %s → %s', phone_number, body.get('code'))
+        cache.set(cache_key, {}, timeout=60)  # cache miss for 1 min to avoid hammering
+        return None
+
+    except Exception as exc:
+        log.warning('get_customer_balances failed for %s: %s', phone_number, exc)
+        return None
+
+
+
+def set_customer_loan_limit(phone_number: str, loan_limit: Decimal) -> dict:
+    """
+    POST /api/partner/set-loan-limit/
+
+    Sets the loan limit for a single customer in the LMS.
+    Returns the full response dict from the LMS.
+
+    Used in the loan tasks pipeline (set_loan_limits_for_batch) before
+    dispatching borrow_loan calls.
+    """
+    try:
+        resp = _get_session().post(
+            f'{settings.LMS_BASE_URL}/api/partner/set-loan-limit/',
+            json={
+                'phone_number': phone_number,
+                'loan_limit':   str(loan_limit),
+            },
+            headers=_headers(),
+            timeout=min(settings.LMS_TIMEOUT, 15),
+            verify=True,
+        )
+        if resp.status_code == 401:
+            invalidate_token_cache()
+            resp = _get_session().post(
+                f'{settings.LMS_BASE_URL}/api/partner/set-loan-limit/',
+                json={
+                    'phone_number': phone_number,
+                    'loan_limit':   str(loan_limit),
+                },
+                headers=_headers(),
+                timeout=min(settings.LMS_TIMEOUT, 15),
+                verify=True,
+            )
+
+        body = _safe_json(resp)
+        code = str(body.get('code', ''))
+        success = code.startswith('200')
+
+        if success:
+            # Invalidate cached balance — limit has changed
+            invalidate_customer_balances_cache(phone_number)
+            log.info(
+                'set_customer_loan_limit: phone=%s limit=%s → accessible=%s',
+                phone_number, loan_limit,
+                body.get('data', {}).get('accessible_loan_limit'),
+            )
+        else:
+            log.warning(
+                'set_customer_loan_limit failed: phone=%s limit=%s code=%s message=%s',
+                phone_number, loan_limit, code, body.get('message'),
+            )
+
+        return body
+
+    except Exception as exc:
+        log.error('set_customer_loan_limit error for %s: %s', phone_number, exc)
+        return {'code': 'error', 'message': str(exc)}
+
+
+def bulk_set_loan_limits(customers: list[dict]) -> dict:
+    """
+    POST /api/partner/bulk-set-loan-limits/
+
+    Sets loan limits for multiple customers in one call.
+
+    customers: list of {"phone_number": "254...", "loan_limit": "5000.00"}
+
+    Returns the full LMS response dict:
+        {
+            "code": "200.001",
+            "data": {
+                "processed": 10,
+                "updated": 8,
+                "failed": 2,
+                "results": [...]
+            }
+        }
+
+    Invalidates cached balances for all customers that were successfully updated.
+    Batches in chunks of 500 (LMS hard limit) if the list is larger.
+    """
+    if not customers:
+        return {'code': '200.001', 'data': {'processed': 0, 'updated': 0, 'failed': 0, 'results': []}}
+
+    CHUNK_SIZE = 500
+    all_results = []
+    total_updated = 0
+    total_failed  = 0
+
+    chunks = [customers[i:i + CHUNK_SIZE] for i in range(0, len(customers), CHUNK_SIZE)]
+
+    for chunk in chunks:
+        try:
+            resp = _get_session().post(
+                f'{settings.LMS_BASE_URL}/api/partner/bulk-set-loan-limits/',
+                json={'customers': chunk},
+                headers=_headers(),
+                timeout=settings.LMS_TIMEOUT,
+                verify=True,
+            )
+            if resp.status_code == 401:
+                invalidate_token_cache()
+                resp = _get_session().post(
+                    f'{settings.LMS_BASE_URL}/api/partner/bulk-set-loan-limits/',
+                    json={'customers': chunk},
+                    headers=_headers(),
+                    timeout=settings.LMS_TIMEOUT,
+                    verify=True,
+                )
+
+            body = _safe_json(resp)
+            if str(body.get('code', '')).startswith('200'):
+                chunk_data = body.get('data', {})
+                total_updated += chunk_data.get('updated', 0)
+                total_failed  += chunk_data.get('failed', 0)
+                chunk_results  = chunk_data.get('results', [])
+                all_results.extend(chunk_results)
+
+                # Invalidate cache for successfully updated customers
+                for result in chunk_results:
+                    if result.get('status') == 'updated':
+                        invalidate_customer_balances_cache(result['phone_number'])
+            else:
+                log.error('bulk_set_loan_limits chunk failed: %s', body)
+                total_failed += len(chunk)
+                all_results.extend([
+                    {'phone_number': c['phone_number'], 'status': 'failed', 'reason': 'LMS chunk error'}
+                    for c in chunk
+                ])
+
+        except Exception as exc:
+            log.error('bulk_set_loan_limits chunk exception: %s', exc)
+            total_failed += len(chunk)
+            all_results.extend([
+                {'phone_number': c['phone_number'], 'status': 'failed', 'reason': str(exc)}
+                for c in chunk
+            ])
+
+    log.info(
+        'bulk_set_loan_limits: total=%d updated=%d failed=%d',
+        len(customers), total_updated, total_failed,
+    )
+
+    return {
+        'code': '200.001',
+        'data': {
+            'processed': len(customers),
+            'updated':   total_updated,
+            'failed':    total_failed,
+            'results':   all_results,
+        },
+    }
