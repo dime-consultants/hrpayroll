@@ -53,6 +53,7 @@ LOCAL_APPS = [
     'apps.payroll',
     'apps.repayments',
     'apps.api',
+    'apps.loans',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -338,6 +339,27 @@ UNFOLD = {
                         'title': 'Idempotency Keys',
                         'icon': 'key',
                         'link': '/admin/repayments/idempotencykey/',
+                    },
+                ],
+            },
+            {
+                'title': 'Loan Requests',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Loan Uploads',
+                        'icon': 'upload_file',
+                        'link': '/admin/loans/loanrequestupload/',
+                    },
+                    {
+                        'title': 'Loan Batches',
+                        'icon': 'batch_prediction',
+                        'link': '/admin/loans/loanrequestbatch/',
+                    },
+                    {
+                        'title': 'Loan Requests',
+                        'icon': 'request_quote',
+                        'link': '/admin/loans/loanrequest/',
                     },
                 ],
             },
