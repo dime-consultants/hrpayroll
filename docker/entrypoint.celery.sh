@@ -3,7 +3,7 @@ set -e
 
 echo "==> [Celery] Waiting for DB..."
 until python -c "
-import psycopg2, os
+import psycopg, os
 try:
     psycopg2.connect(
         dbname=os.environ['DB_NAME'],
