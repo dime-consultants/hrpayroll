@@ -274,6 +274,12 @@ def invalidate_token_cache() -> None:
     cache.delete(_TOKEN_KEY)
     log.info('LMS token cache invalidated')
 
+    
+def invalidate_customer_balances_cache(phone_number: str) -> None:
+    """Force a fresh balance fetch on the next eligibility check for this customer."""
+    cache.delete(f'lms:customer_balances:{phone_number}')
+    log.debug('Invalidated customer_balances cache for %s', phone_number)
+
 
 # ─────────────────────────────────────────────────────────────
 # Result object
