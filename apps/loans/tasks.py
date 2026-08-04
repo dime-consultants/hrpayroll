@@ -225,35 +225,20 @@ def check_single_eligibility(self, request_id: str):
     try:
         balances = get_customer_balances(req.phone_number)
     except Exception as exc:
-        log.warning(
-            'check_single_eligibility: LMS call failed for %s: %s', req.phone_number, exc,
-        )
+        log.warning('check_single_eligibility: LMS call failed for %s: %s', req.phone_number, exc)
         raise self.retry(exc=exc)
 
+    # Only hard gate — customer must exist and belong to this partner's org
     if balances is None:
         req.status               = LoanRequest.STATUS_INELIGIBLE
         req.ineligibility_reason = 'Customer not found or not registered under this organisation.'
         req.save(update_fields=['status', 'ineligibility_reason'])
         return 'ineligible:not_found'
 
-    accessible   = Decimal(str(balances.get('accessible_loan_limit', '0') or '0'))
-    loan_balance = Decimal(str(balances.get('loan_balance', '0') or '0'))
-
-    req.accessible_loan_limit = accessible
-    req.existing_loan_balance = loan_balance
-
-    if req.requested_amount > accessible:
-        req.status               = LoanRequest.STATUS_INELIGIBLE
-        req.ineligibility_reason = (
-            f'Requested {req.requested_amount} exceeds accessible limit of {accessible} '
-            f'(existing balance: {loan_balance}).'
-        )
-        req.save(update_fields=[
-            'status', 'accessible_loan_limit', 'existing_loan_balance', 'ineligibility_reason',
-        ])
-        return 'ineligible:limit_exceeded'
-
-    req.status = LoanRequest.STATUS_ELIGIBLE
+    # Store for audit and for set_loan_limits_for_batch to use
+    req.accessible_loan_limit = Decimal(str(balances.get('accessible_loan_limit', '0') or '0'))
+    req.existing_loan_balance = Decimal(str(balances.get('loan_balance', '0') or '0'))
+    req.status                = LoanRequest.STATUS_ELIGIBLE
     req.save(update_fields=['status', 'accessible_loan_limit', 'existing_loan_balance'])
     return 'eligible'
 
