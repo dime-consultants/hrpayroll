@@ -12,6 +12,251 @@ log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 
+COLUMN_ALIASES = {
+    'phone_number':  ['phone_number', 'phone', 'msisdn', 'mobile', 'telephone'],
+    'amount':        ['amount', 'loan_amount', 'requested_amount', 'request_amount'],
+    'employee_name': ['employee_name', 'name', 'full_name', 'employee'],
+    'employee_id':   ['employee_id', 'staff_id', 'payroll_number', 'emp_id'],
+    'reference':     ['reference', 'ref', 'note'],
+}
+
+
+def _normalize_headers(headers):
+    mapping = {}
+    for canonical, aliases in COLUMN_ALIASES.items():
+        for i, h in enumerate(headers):
+            if str(h).strip().lower() in aliases:
+                mapping[canonical] = i
+                break
+    return mapping
+
+
+def _parse_excel(file_field):
+    file_field.seek(0)
+    wb = openpyxl.load_workbook(file_field, read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return [], []
+    headers = [str(h).strip() if h is not None else '' for h in rows[0]]
+    col_map = _normalize_headers(headers)
+
+    missing = [c for c in ('phone_number', 'amount') if c not in col_map]
+    if missing:
+        return [], [f'Missing required columns: {missing}. Found headers: {headers}']
+
+    result = []
+    for row in rows[1:]:
+        if all(c is None for c in row):
+            continue
+        result.append({k: row[v] for k, v in col_map.items() if v < len(row)})
+    return result, []
+
+
+def _validate_row(row: dict, row_num: int) -> dict:
+    from apps.api.validators import normalize_phone, validate_phone
+    errors = []
+
+    raw_phone = str(row.get('phone_number') or '').strip()
+    phone = normalize_phone(raw_phone)
+    if not phone or not validate_phone(phone):
+        errors.append(f'Row {row_num}: invalid phone "{raw_phone}"')
+
+    try:
+        amount = Decimal(str(row.get('amount', '') or '0').replace(',', '').strip())
+        if amount <= Decimal('0'):
+            errors.append(f'Row {row_num}: amount must be > 0')
+    except InvalidOperation:
+        amount = Decimal('0')
+        errors.append(f'Row {row_num}: invalid amount "{row.get("amount")}"')
+
+    if errors:
+        return {'error': True, 'messages': errors, 'row': row_num}
+
+    return {
+        'error':         False,
+        'phone_number':  phone,
+        'amount':        amount,
+        'employee_name': str(row.get('employee_name') or '').strip()[:200],
+        'employee_id':   str(row.get('employee_id') or '').strip()[:100],
+        'reference':     str(row.get('reference') or '').strip()[:100],
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# Step 1 — Parse upload (fires after admin approval)
+# ─────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=10)
+def parse_loan_upload(self, upload_id: str):
+    from apps.loans.models import LoanRequestUpload, LoanRequest
+
+    try:
+        upload = LoanRequestUpload.objects.select_related('organization').get(id=upload_id)
+    except LoanRequestUpload.DoesNotExist:
+        log.error('parse_loan_upload: upload %s not found', upload_id)
+        return
+
+    if upload.status not in (
+        LoanRequestUpload.STATUS_APPROVED,
+        LoanRequestUpload.STATUS_PROCESSING,
+    ):
+        log.warning(
+            'parse_loan_upload: upload %s is %s — skipping (must be approved first)',
+            upload_id, upload.status,
+        )
+        return
+
+    upload.status         = LoanRequestUpload.STATUS_PROCESSING
+    upload.celery_task_id = self.request.id
+    upload.save(update_fields=['status', 'celery_task_id'])
+
+    errors       = []
+    rows_created = 0
+
+    try:
+        rows, parse_errors = _parse_excel(upload.file)
+        if parse_errors:
+            upload.status    = LoanRequestUpload.STATUS_FAILED
+            upload.error_log = parse_errors
+            upload.save(update_fields=['status', 'error_log'])
+            log.error('parse_loan_upload: header errors for %s: %s', upload_id, parse_errors)
+            return
+
+        upload.total_rows = len(rows)
+        upload.save(update_fields=['total_rows'])
+
+        bulk_requests = []
+        for i, row in enumerate(rows, start=2):
+            result = _validate_row(row, i)
+            if result['error']:
+                errors.append(result)
+                continue
+            req = LoanRequest(
+                upload           = upload,
+                organization     = upload.organization,
+                phone_number     = result['phone_number'],
+                employee_name    = result.get('employee_name', ''),
+                employee_id      = result.get('employee_id', ''),
+                requested_amount = result['amount'],
+                reference        = result.get('reference', ''),
+                row_number       = i,
+                status           = LoanRequest.STATUS_QUEUED,
+            )
+            req.idempotency_key = req.build_idempotency_key()
+            bulk_requests.append(req)
+
+        with db_transaction.atomic():
+            LoanRequest.objects.bulk_create(bulk_requests, ignore_conflicts=True)
+            rows_created = len(bulk_requests)
+
+        upload.processed_rows = rows_created
+        upload.failed_rows    = len(errors)
+        upload.error_log      = errors
+        upload.status = (
+            LoanRequestUpload.STATUS_DONE if not errors else LoanRequestUpload.STATUS_PARTIAL
+        )
+        upload.save(update_fields=['processed_rows', 'failed_rows', 'error_log', 'status'])
+        log.info(
+            'parse_loan_upload: upload=%s created=%d errors=%d',
+            upload_id, rows_created, len(errors),
+        )
+
+        check_loan_eligibility_batch.delay(upload_id)
+
+    except Exception as exc:
+        log.exception('parse_loan_upload failed for %s: %s', upload_id, exc)
+        upload.status    = LoanRequestUpload.STATUS_FAILED
+        upload.error_log = [{'error': str(exc)}]
+        upload.save(update_fields=['status', 'error_log'])
+        raise self.retry(exc=exc)
+
+
+# ─────────────────────────────────────────────────────────────
+# Step 2 — Eligibility fan-out
+# ─────────────────────────────────────────────────────────────
+
+@shared_task(bind=True)
+def check_loan_eligibility_batch(self, upload_id: str):
+    from apps.loans.models import LoanRequest
+
+    request_ids = list(
+        LoanRequest.objects.filter(
+            upload_id=upload_id,
+            status__in=[LoanRequest.STATUS_QUEUED, LoanRequest.STATUS_FAILED],
+        ).values_list('id', flat=True)
+    )
+
+    if not request_ids:
+        log.warning(
+            'check_loan_eligibility_batch: no queued requests for upload %s', upload_id,
+        )
+        return
+
+    job = chord(
+        group(check_single_eligibility.s(str(r_id)) for r_id in request_ids),
+        finalize_eligibility.s(upload_id),
+    )
+    job.apply_async()
+    log.info(
+        'check_loan_eligibility_batch: dispatched %d eligibility checks for upload %s',
+        len(request_ids), upload_id,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Step 3 — Single eligibility check
+# ─────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=15)
+def check_single_eligibility(self, request_id: str):
+    from apps.loans.models import LoanRequest
+    from apps.api.lms_client import get_customer_balances
+
+    try:
+        req = LoanRequest.objects.select_related('organization').get(id=request_id)
+    except LoanRequest.DoesNotExist:
+        log.error('check_single_eligibility: request %s not found', request_id)
+        return 'not_found'
+
+    req.status = LoanRequest.STATUS_ELIGIBILITY_CHECKING
+    req.save(update_fields=['status'])
+
+    try:
+        balances = get_customer_balances(req.phone_number)
+    except Exception as exc:
+        log.warning(
+            'check_single_eligibility: LMS call failed for %s: %s', req.phone_number, exc,
+        )
+        raise self.retry(exc=exc)
+
+    if balances is None:
+        req.status               = LoanRequest.STATUS_INELIGIBLE
+        req.ineligibility_reason = 'Customer not found or not registered under this organisation.'
+        req.save(update_fields=['status', 'ineligibility_reason'])
+        return 'ineligible:not_found'
+
+    accessible   = Decimal(str(balances.get('accessible_loan_limit', '0') or '0'))
+    loan_balance = Decimal(str(balances.get('loan_balance', '0') or '0'))
+
+    req.accessible_loan_limit = accessible
+    req.existing_loan_balance = loan_balance
+
+    if req.requested_amount > accessible:
+        req.status               = LoanRequest.STATUS_INELIGIBLE
+        req.ineligibility_reason = (
+            f'Requested {req.requested_amount} exceeds accessible limit of {accessible} '
+            f'(existing balance: {loan_balance}).'
+        )
+        req.save(update_fields=[
+            'status', 'accessible_loan_limit', 'existing_loan_balance', 'ineligibility_reason',
+        ])
+        return 'ineligible:limit_exceeded'
+
+    req.status = LoanRequest.STATUS_ELIGIBLE
+    req.save(update_fields=['status', 'accessible_loan_limit', 'existing_loan_balance'])
+    return 'eligible'
+
 
 @shared_task
 def finalize_eligibility(results, upload_id: str):
