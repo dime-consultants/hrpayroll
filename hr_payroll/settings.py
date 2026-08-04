@@ -246,7 +246,7 @@ IDEMPOTENCY_KEY_TTL      = 60 * 60 * 24  # 24 hours
 # ── CORS ─────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://hr.dimeapp.co.ke,http://localhost:5001',
+    default='https://hr.dimeapp.co.ke,http://localhost:5001,https://payroll.dimeapp.co.ke',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
