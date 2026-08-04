@@ -26,7 +26,7 @@ class LoanRequestUploadSerializer(serializers.ModelSerializer):
 
     def get_uploaded_by_name(self, obj):
         if obj.uploaded_by:
-            return obj.uploaded_by.get_full_name() or obj.uploaded_by.email
+            return obj.uploaded_by.full_name() or obj.uploaded_by.email
         return None
 
 
