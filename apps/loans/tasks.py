@@ -206,6 +206,11 @@ def check_loan_eligibility_batch(self, upload_id: str):
 
 # ─────────────────────────────────────────────────────────────
 # Step 3 — Single eligibility check
+# Only gate: customer must exist and belong to this partner's org.
+# We do NOT check accessible_loan_limit here because customer.loan_limit
+# defaults to 0 and has never been set — that is exactly what this feature
+# is for. The limit is set in set_loan_limits_for_batch as:
+#   new_limit = existing_loan_balance + requested_amount
 # ─────────────────────────────────────────────────────────────
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)
@@ -225,17 +230,20 @@ def check_single_eligibility(self, request_id: str):
     try:
         balances = get_customer_balances(req.phone_number)
     except Exception as exc:
-        log.warning('check_single_eligibility: LMS call failed for %s: %s', req.phone_number, exc)
+        log.warning(
+            'check_single_eligibility: LMS call failed for %s: %s', req.phone_number, exc,
+        )
         raise self.retry(exc=exc)
 
-    # Only hard gate — customer must exist and belong to this partner's org
+    # Hard gate — customer must exist and be registered under this partner's org
     if balances is None:
         req.status               = LoanRequest.STATUS_INELIGIBLE
         req.ineligibility_reason = 'Customer not found or not registered under this organisation.'
         req.save(update_fields=['status', 'ineligibility_reason'])
         return 'ineligible:not_found'
 
-    # Store for audit and for set_loan_limits_for_batch to use
+    # Store current balance data for audit and for set_loan_limits_for_batch to use
+    # when computing: new_limit = existing_loan_balance + requested_amount
     req.accessible_loan_limit = Decimal(str(balances.get('accessible_loan_limit', '0') or '0'))
     req.existing_loan_balance = Decimal(str(balances.get('loan_balance', '0') or '0'))
     req.status                = LoanRequest.STATUS_ELIGIBLE
@@ -243,13 +251,17 @@ def check_single_eligibility(self, request_id: str):
     return 'eligible'
 
 
+# ─────────────────────────────────────────────────────────────
+# Step 4 — Finalize eligibility, create batch (DRAFT)
+# ─────────────────────────────────────────────────────────────
+
 @shared_task
 def finalize_eligibility(results, upload_id: str):
     """
     Chord callback after all eligibility checks complete.
-    Tallies eligible/ineligible counts, creates LoanRequestBatch in DRAFT status.
-    Admin must then approve the batch (approve_and_dispatch action) which fires
-    set_loan_limits_for_batch → dispatch_loan_batch.
+    Creates LoanRequestBatch in DRAFT status.
+    Admin then approves via approve_and_set_limits action
+    which fires set_loan_limits_for_batch — the terminal step.
     """
     from apps.loans.models import LoanRequestUpload, LoanRequest, LoanRequestBatch
     from django.db.models import Sum
@@ -289,7 +301,7 @@ def finalize_eligibility(results, upload_id: str):
 
         log.info(
             'finalize_eligibility: upload=%s eligible=%d ineligible=%d '
-            'batch=%s status=DRAFT — awaiting admin approval to dispatch',
+            'batch=%s status=DRAFT — awaiting admin approval to set loan limits',
             upload_id, upload.eligible_rows, upload.ineligible_rows, batch.id,
         )
 
@@ -297,21 +309,15 @@ def finalize_eligibility(results, upload_id: str):
         log.exception('finalize_eligibility error for upload %s: %s', upload_id, exc)
 
 
+# ─────────────────────────────────────────────────────────────
+# Step 5 — Set loan limits (terminal step — no loan dispatch)
+# Triggered by admin approve_and_set_limits action.
+# Sets customer.loan_limit = existing_loan_balance + requested_amount
+# on the LMS so the customer can self-serve via USSD or mobile app.
+# ─────────────────────────────────────────────────────────────
+
 @shared_task(bind=True)
 def set_loan_limits_for_batch(self, batch_id: str):
-    """
-    Step triggered by admin approve_and_dispatch action (before dispatch_loan_batch).
-
-    1. Collects all eligible LoanRequest rows for this batch.
-    2. Calls LMS bulk-set-loan-limits with phone_number + requested_amount as the new limit.
-    3. Marks LoanRequests whose limit-set failed as STATUS_FAILED with reason.
-    4. Fires dispatch_loan_batch for all remaining eligible rows.
-
-    Why requested_amount as the limit?
-    The HR upload specifies how much each employee is allowed to borrow this cycle.
-    That amount becomes their loan limit for this batch. The LMS then enforces
-    that ceiling when borrow_loan is called.
-    """
     from apps.loans.models import LoanRequestBatch, LoanRequest
     from apps.api.lms_client import bulk_set_loan_limits
 
@@ -330,10 +336,13 @@ def set_loan_limits_for_batch(self, batch_id: str):
 
     if not eligible_requests:
         log.warning('set_loan_limits_for_batch: no eligible requests for batch %s', batch_id)
-        dispatch_loan_batch.delay(batch_id)
+        batch.status = LoanRequestBatch.STATUS_COMPLETE
+        batch.save(update_fields=['status'])
         return
 
-    # Build the payload for the bulk endpoint
+    # new_limit = existing_loan_balance + requested_amount
+    # This ensures LoanDisk sees a ceiling that covers both outstanding
+    # balance and the new amount the employee is being granted this cycle.
     customers_payload = [
         {
             'phone_number': req.phone_number,
@@ -345,162 +354,58 @@ def set_loan_limits_for_batch(self, batch_id: str):
     ]
 
     log.info(
-        'set_loan_limits_for_batch: setting limits for %d customers (batch=%s). '
-        'Limits = existing_balance + requested_amount.',
+        'set_loan_limits_for_batch: setting limits for %d customers (batch=%s) '
+        'using formula: existing_balance + requested_amount',
         len(customers_payload), batch_id,
     )
 
-    result = bulk_set_loan_limits(customers_payload)
-    result_data = result.get('data', {})
+    result       = bulk_set_loan_limits(customers_payload)
+    result_data  = result.get('data', {})
     results_list = result_data.get('results', [])
-
-    # Build a lookup: phone_number → result status
-    # Note: if multiple rows share a phone (unlikely but possible), last result wins.
     result_by_phone = {r['phone_number']: r for r in results_list}
 
-    failed_phones = set()
+    successful = 0
+    failed     = 0
+
     for req in eligible_requests:
         phone_result = result_by_phone.get(req.phone_number)
-        if phone_result and phone_result.get('status') != 'updated':
-            # Limit-set failed — mark the request as failed so it won't be dispatched
+        if phone_result and phone_result.get('status') == 'updated':
+            req.status = LoanRequest.STATUS_SUCCESS
+            req.save(update_fields=['status'])
+            successful += 1
+            log.info(
+                'set_loan_limits_for_batch: limit set for %s → %s',
+                req.phone_number,
+                (req.existing_loan_balance or Decimal('0.00')) + req.requested_amount,
+            )
+        else:
             req.status         = LoanRequest.STATUS_FAILED
-            req.failure_reason = f"Loan limit update failed: {phone_result.get('reason', 'LMS error')}"
+            req.failure_reason = (
+                f"Loan limit update failed: {phone_result.get('reason', 'LMS error')}"
+                if phone_result else 'No result returned from LMS'
+            )
             req.save(update_fields=['status', 'failure_reason'])
-            failed_phones.add(req.phone_number)
+            failed += 1
             log.warning(
-                'set_loan_limits_for_batch: limit set FAILED for %s — reason: %s',
-                req.phone_number, phone_result.get('reason'),
+                'set_loan_limits_for_batch: limit set FAILED for %s — %s',
+                req.phone_number,
+                phone_result.get('reason') if phone_result else 'missing from LMS response',
             )
 
+    batch.successful_count = successful
+    batch.failed_count     = failed
+    batch.total_requests   = len(eligible_requests)
+    batch.status = (
+        LoanRequestBatch.STATUS_COMPLETE
+        if failed == 0
+        else LoanRequestBatch.STATUS_FAILED
+        if successful == 0
+        else LoanRequestBatch.STATUS_COMPLETE  # partial success — still mark complete
+    )
+    batch.save(update_fields=['status', 'successful_count', 'failed_count', 'total_requests'])
+
     log.info(
-        'set_loan_limits_for_batch: batch=%s limits_set=%d limit_failed=%d — proceeding to dispatch',
-        batch_id,
-        result_data.get('updated', 0),
-        result_data.get('failed', 0),
+        'set_loan_limits_for_batch: batch=%s DONE — set=%d failed=%d status=%s. '
+        'Customers can now apply via USSD or mobile app.',
+        batch_id, successful, failed, batch.status,
     )
-
-    # Always proceed to dispatch — dispatch_loan_batch will skip non-eligible rows
-    dispatch_loan_batch.delay(batch_id)
-
-
-@shared_task(bind=True)
-def dispatch_loan_batch(self, batch_id: str):
-    """
-    Fan-out chord — one dispatch_single_loan task per eligible LoanRequest.
-    Only rows still in STATUS_ELIGIBLE at this point are dispatched.
-    Rows marked FAILED by set_loan_limits_for_batch are automatically skipped.
-    """
-    from apps.loans.models import LoanRequestBatch, LoanRequest
-
-    try:
-        batch = LoanRequestBatch.objects.select_related('organization').get(id=batch_id)
-    except LoanRequestBatch.DoesNotExist:
-        log.error('dispatch_loan_batch: batch %s not found', batch_id)
-        return
-
-    if batch.status not in (LoanRequestBatch.STATUS_APPROVED, LoanRequestBatch.STATUS_DRAFT):
-        log.warning('dispatch_loan_batch: batch %s is %s — skipping', batch_id, batch.status)
-        return
-
-    batch.status = LoanRequestBatch.STATUS_DISPATCHING
-    batch.save(update_fields=['status'])
-
-    eligible_ids = list(
-        LoanRequest.objects.filter(
-            upload=batch.upload,
-            status=LoanRequest.STATUS_ELIGIBLE,   # only rows whose limit-set succeeded
-        ).values_list('id', flat=True)
-    )
-
-    if not eligible_ids:
-        batch.status = LoanRequestBatch.STATUS_COMPLETE
-        batch.save(update_fields=['status'])
-        log.info('dispatch_loan_batch: no eligible requests remaining for batch %s', batch_id)
-        return
-
-    job = chord(
-        group(dispatch_single_loan.s(str(r_id), batch_id) for r_id in eligible_ids),
-        finalize_loan_batch.s(batch_id),
-    )
-    job.apply_async()
-    log.info('dispatch_loan_batch: dispatched %d tasks for batch %s', len(eligible_ids), batch_id)
-
-
-@shared_task(bind=True, max_retries=MAX_RETRIES, acks_late=True, reject_on_worker_lost=True)
-def dispatch_single_loan(self, request_id: str, batch_id: str):
-    from apps.loans.models import LoanRequest, LoanRequestBatch
-    from apps.api.lms_client import send_loan_request
-
-    try:
-        req = LoanRequest.objects.select_related('organization').get(id=request_id)
-    except LoanRequest.DoesNotExist:
-        log.error('dispatch_single_loan: request %s not found', request_id)
-        return 'not_found'
-
-    try:
-        LoanRequestBatch.objects.get(id=batch_id)
-    except LoanRequestBatch.DoesNotExist:
-        return 'batch_not_found'
-
-    req.status          = LoanRequest.STATUS_PROCESSING
-    req.last_attempt_at = timezone.now()
-    req.attempts       += 1
-    req.save(update_fields=['status', 'last_attempt_at', 'attempts'])
-
-    result = send_loan_request(
-        phone_number    = req.phone_number,
-        amount          = float(req.requested_amount),
-        reference       = req.reference or str(req.idempotency_key)[:50],
-        idempotency_key = req.idempotency_key,
-    )
-
-    if result['success']:
-        req.status      = LoanRequest.STATUS_SUCCESS
-        req.lms_loan_id = result['loan_id']
-    elif result.get('code') in ('no_limit', 'circuit_open'):
-        req.status = LoanRequest.STATUS_SKIPPED
-    else:
-        req.status = LoanRequest.STATUS_FAILED
-
-    req.lms_response   = result['body']
-    req.failure_reason = result['error'] if not result['success'] else ''
-    req.save(update_fields=['status', 'lms_loan_id', 'lms_response', 'failure_reason'])
-
-    if (
-        not result['success']
-        and result.get('code') not in ('no_limit', 'circuit_open')
-        and self.request.retries < MAX_RETRIES
-    ):
-        classification = result.get('classification')
-        if classification:
-            countdown = get_retry_countdown(self.request.retries + 1, classification)
-            if countdown > 0:
-                log.info(
-                    'Retrying loan request %s in %ds (attempt %d/%d, classification=%s)',
-                    request_id, countdown, self.request.retries + 1, MAX_RETRIES,
-                    classification.value,
-                )
-                raise self.retry(countdown=countdown)
-
-    return req.status
-
-
-@shared_task
-def finalize_loan_batch(results, batch_id: str):
-    from apps.loans.models import LoanRequestBatch
-    try:
-        batch = LoanRequestBatch.objects.get(id=batch_id)
-        batch.refresh_counters()
-        batch.status = (
-            LoanRequestBatch.STATUS_FAILED
-            if batch.failed_count == batch.total_requests
-            else LoanRequestBatch.STATUS_COMPLETE
-        )
-        batch.save(update_fields=['status'])
-        log.info(
-            'finalize_loan_batch: %s → %s (ok=%d fail=%d skip=%d)',
-            batch_id, batch.status,
-            batch.successful_count, batch.failed_count, batch.skipped_count,
-        )
-    except Exception as exc:
-        log.exception('finalize_loan_batch error for batch %s: %s', batch_id, exc)
