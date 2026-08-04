@@ -3,9 +3,9 @@ set -e
 
 echo "==> [Celery] Waiting for DB..."
 until python -c "
-import psycopg2, os
+import psycopg, os
 try:
-    psycopg2.connect(
+    psycopg.connect(
         dbname=os.environ['DB_NAME'],
         user=os.environ['DB_USER'],
         password=os.environ['DB_PASSWORD'],

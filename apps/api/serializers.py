@@ -1,6 +1,8 @@
 from decimal import Decimal
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
+
+User = get_user_model()
 
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser
 from apps.payroll.models import PayrollUpload, SalaryDeduction
@@ -32,27 +34,26 @@ class HRUserSerializer(serializers.ModelSerializer):
 
 
 class HRUserCreateSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=50)
     last_name = serializers.CharField(max_length=50)
     password = serializers.CharField(min_length=8, write_only=True)
     role = serializers.ChoiceField(choices=HRUser.ROLE_CHOICES)
 
-    def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError('Username already exists.')
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
         return value
 
     def create(self, validated_data):
         request = self.context['request']
-        user = User.objects.create_user(
-            username=validated_data['username'],
+        user = User(
             email=validated_data['email'],
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
-            password=validated_data['password'],
         )
+        user.set_password(validated_data['password'])
+        user.save()
         return HRUser.objects.create(
             user=user,
             organization=request.hr_organization,
@@ -104,16 +105,15 @@ class PayrollUploadCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context['request']
-        upload = PayrollUpload.objects.create(
+        # Processing is not auto-triggered — it stays APPROVAL_PENDING until
+        # an admin runs the "Process selected uploads" action in Django admin.
+        return PayrollUpload.objects.create(
             organization=request.hr_organization,
             uploaded_by=request.user,
             original_filename=validated_data['file'].name,
             status=PayrollUpload.STATUS_APPROVAL_PENDING,
             **validated_data
         )
-        from apps.repayments.tasks import parse_payroll_upload
-        parse_payroll_upload.delay(str(upload.id))
-        return upload
 
 
 class SalaryDeductionSerializer(serializers.ModelSerializer):

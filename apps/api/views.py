@@ -145,7 +145,7 @@ class HRUserListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         hr_user = serializer.save()
-        self._audit('user_create', hr_user.id, f'Created HR user {hr_user.user.username}')
+        self._audit('user_create', hr_user.id, f'Created HR user {hr_user.user.email}')
 
 
 class HRUserDetailView(OrgScopedMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -160,7 +160,7 @@ class HRUserDetailView(OrgScopedMixin, generics.RetrieveUpdateDestroyAPIView):
         instance.user.is_active = False
         instance.save(update_fields=['is_active'])
         instance.user.save(update_fields=['is_active'])
-        self._audit('user_deactivate', instance.id, f'Deactivated {instance.user.username}')
+        self._audit('user_deactivate', instance.id, f'Deactivated {instance.user.email}')
 
 
 class PayrollUploadListCreateView(OrgScopedMixin, generics.ListCreateAPIView):

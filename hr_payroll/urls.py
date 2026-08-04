@@ -14,7 +14,8 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    path('api/', SignInView.as_view(), name='signin')
+    path('api/', SignInView.as_view(), name='signin'),
+    path('api/loans/', include('apps.loans.urls',namespace='loans'))
 ]
 
 if settings.DEBUG:
