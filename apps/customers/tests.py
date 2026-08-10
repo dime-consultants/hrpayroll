@@ -97,7 +97,7 @@ class CustomerRegistrationTaskTests(TestCase):
         )
         self.registration = CustomerRegistration.objects.create(
             organization=self.org,
-            status=CustomerRegistration.STATUS_APPROVED,
+            status=CustomerRegistration.STATUS_ACTIVE,
             first_name='Joe', last_name='Doe', gender='Male',
             date_of_birth='1998-03-12', identity_number='36789107',
             phone_number='254700000000',

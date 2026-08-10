@@ -9,10 +9,12 @@ Flow:
 
 Admin actions:
   CustomerRegistrationAdmin:
-    - approve_registrations → marks approved (+ its KYC docs) + fires register_borrower_task
-    - reject_registrations  → marks failed (pre-processing rejection)
-    - retry_kyc_upload      → re-fires upload_kyc_documents_task for partial/failed registrations
-                               without re-registering the borrower
+    - approve_registrations         → marks active (+ its KYC docs approved) + fires register_borrower_task
+    - reject_registrations          → marks failed (pre-processing rejection)
+    - reprocess_failed_registrations → resets failed registrations to active and re-fires
+                                        register_borrower_task from scratch
+    - retry_kyc_upload              → re-fires upload_kyc_documents_task for partial/failed
+                                        registrations without re-registering the borrower
 """
 import logging
 
@@ -93,7 +95,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
         }),
     )
 
-    actions = ['approve_registrations', 'reject_registrations', 'retry_kyc_upload']
+    actions = ['approve_registrations', 'reject_registrations', 'reprocess_failed_registrations', 'retry_kyc_upload']
 
     @display(description='ID')
     def id_short(self, obj):
@@ -107,7 +109,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
     def status_badge(self, obj):
         colours = {
             'approval_pending': '#f59e0b',
-            'approved':         '#3b82f6',
+            'active':           '#3b82f6',
             'processing':       '#8b5cf6',
             'done':             '#10b981',
             'partial':          '#f97316',
@@ -154,6 +156,35 @@ class CustomerRegistrationAdmin(ModelAdmin):
             status=CustomerRegistration.STATUS_APPROVAL_PENDING,
         ).update(status=CustomerRegistration.STATUS_FAILED)
         self.message_user(request, f'{updated} registration(s) rejected.', messages.WARNING)
+
+    @action(description='🔁 Reprocess failed registrations (retry LMS registration from scratch)')
+    def reprocess_failed_registrations(self, request, queryset):
+        from .tasks import register_borrower_task
+        reprocessed = 0
+        skipped     = 0
+        for registration in queryset:
+            if registration.status != CustomerRegistration.STATUS_FAILED:
+                skipped += 1
+                continue
+            registration.status         = CustomerRegistration.STATUS_ACTIVE
+            registration.failure_reason = ''
+            registration.save(update_fields=['status', 'failure_reason'])
+            register_borrower_task.delay(str(registration.id))
+            log.info('Admin %s reprocessing failed customer registration %s', request.user, registration.id)
+            reprocessed += 1
+
+        if reprocessed:
+            self.message_user(
+                request,
+                f'{reprocessed} registration(s) reprocessed and queued for LMS registration.',
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} registration(s) skipped — only "Failed" registrations can be reprocessed.',
+                messages.WARNING,
+            )
 
     @action(description='🔄 Retry KYC upload for partial/failed registrations')
     def retry_kyc_upload(self, request, queryset):

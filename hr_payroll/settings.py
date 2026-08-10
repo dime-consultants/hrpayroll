@@ -364,6 +364,17 @@ UNFOLD = {
                     },
                 ],
             },
+            {
+                'title': 'Customer Registrations',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Customer Registrations',
+                        'icon': 'badge',
+                        'link': '/admin/customers/customerregistration/',
+                    },
+                ],
+            },
         ],
     },
 }
