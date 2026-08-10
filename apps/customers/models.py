@@ -4,7 +4,7 @@ apps/customers/models.py
 Tracks HR-initiated borrower onboarding (customer registration + KYC).
 
 Flow:
-  CustomerRegistration (approval_pending → approved → processing → done/partial/failed)
+  CustomerRegistration (approval_pending → active → processing → done/partial/failed)
       └── KYCDocument (approval_pending → approved → uploaded/failed)  [one row per photo slot]
 
 Key design decisions:
@@ -41,7 +41,7 @@ def kyc_document_path(instance, filename):
 
 class CustomerRegistration(BaseModel):
     STATUS_APPROVAL_PENDING = 'approval_pending'
-    STATUS_APPROVED         = 'approved'
+    STATUS_ACTIVE            = 'active'
     STATUS_PROCESSING       = 'processing'
     STATUS_DONE              = 'done'
     STATUS_PARTIAL           = 'partial'
@@ -49,7 +49,7 @@ class CustomerRegistration(BaseModel):
 
     STATUS_CHOICES = [
         (STATUS_APPROVAL_PENDING, 'Approval Pending'),
-        (STATUS_APPROVED,         'Approved'),
+        (STATUS_ACTIVE,           'Active'),
         (STATUS_PROCESSING,       'Processing'),
         (STATUS_DONE,             'Completed'),
         (STATUS_PARTIAL,          'Partially Processed'),
@@ -144,7 +144,7 @@ class CustomerRegistration(BaseModel):
         super().save(*args, **kwargs)
 
     def approve(self, user):
-        self.status      = self.STATUS_APPROVED
+        self.status      = self.STATUS_ACTIVE
         self.approved_by = user
         self.approved_at = timezone.now()
         self.save(update_fields=['status', 'approved_by', 'approved_at'])

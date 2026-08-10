@@ -48,7 +48,7 @@ def register_borrower_task(self, registration_id: str):
         return
 
     if registration.status not in (
-        CustomerRegistration.STATUS_APPROVED,
+        CustomerRegistration.STATUS_ACTIVE,
         CustomerRegistration.STATUS_PROCESSING,
     ):
         log.warning(

@@ -9,9 +9,9 @@ Flow:
 
 Admin actions:
   CustomerRegistrationAdmin:
-    - approve_registrations         → marks approved (+ its KYC docs) + fires register_borrower_task
+    - approve_registrations         → marks active (+ its KYC docs approved) + fires register_borrower_task
     - reject_registrations          → marks failed (pre-processing rejection)
-    - reprocess_failed_registrations → resets failed registrations to approved and re-fires
+    - reprocess_failed_registrations → resets failed registrations to active and re-fires
                                         register_borrower_task from scratch
     - retry_kyc_upload              → re-fires upload_kyc_documents_task for partial/failed
                                         registrations without re-registering the borrower
@@ -109,7 +109,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
     def status_badge(self, obj):
         colours = {
             'approval_pending': '#f59e0b',
-            'approved':         '#3b82f6',
+            'active':           '#3b82f6',
             'processing':       '#8b5cf6',
             'done':             '#10b981',
             'partial':          '#f97316',
@@ -166,7 +166,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
             if registration.status != CustomerRegistration.STATUS_FAILED:
                 skipped += 1
                 continue
-            registration.status         = CustomerRegistration.STATUS_APPROVED
+            registration.status         = CustomerRegistration.STATUS_ACTIVE
             registration.failure_reason = ''
             registration.save(update_fields=['status', 'failure_reason'])
             register_borrower_task.delay(str(registration.id))
