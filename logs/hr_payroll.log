@@ -1359,3 +1359,29 @@ INFO 2026-06-29 16:31:49,792 tasks 7952 28584 parse_payroll_upload: upload=54d9a
 WARNING 2026-06-29 16:31:49,792 tasks 7952 28584 build_repayment_batch: no dispatchable deductions for upload 54d9abf9-2e40-4f18-a765-475bac802205 (all may already be SUCCESS/SKIPPED)
 INFO 2026-06-29 16:31:49,877 trace 7952 28584 Task apps.repayments.tasks.build_repayment_batch[75ae59cc-54d8-4037-abf3-a0c4b668c405] succeeded in 0.07800000003771856s: None
 INFO 2026-06-29 16:31:49,877 trace 7952 28584 Task apps.repayments.tasks.parse_payroll_upload[f716d5ca-0118-4cf5-ab38-96bcd7bdae4e] succeeded in 0.1720000000204891s: None
+ERROR 2026-08-10 06:09:38,196 tasks 20588 8048 register_borrower_task: registration=af04fb6a-bd4c-45ef-8425-0f075e5e060b FAILED — Invalid identity number
+INFO 2026-08-10 06:09:38,219 tasks 20588 8048 register_borrower_task: registration=653eb6c0-bcbf-4fbe-a94c-feb424014d6e registered lms_customer_id=cust-uuid-1
+ERROR 2026-08-10 06:09:38,281 tasks 20588 8048 upload_kyc_documents_task: registration=051687d4-a208-4328-a490-b7a43503706d KYC upload FAILED — Bad photo
+INFO 2026-08-10 06:09:38,323 tasks 20588 8048 upload_kyc_documents_task: registration=3fe5a8c4-43c7-476a-8a0e-d2b9023f5d65 all KYC documents uploaded
+INFO 2026-08-10 06:15:13,387 views 23624 17236 CustomerRegistration created: id=3b1faac8-9372-4af3-80ea-cd430b4644b1 org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+INFO 2026-08-10 06:15:13,418 views 23624 17236 CustomerRegistration created: id=e1568d5f-5b2a-493c-bc63-d2ab9c3a0ba6 org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+WARNING 2026-08-10 06:15:13,458 log 23624 17236 Bad Request: /api/customers/registrations/
+ERROR 2026-08-10 06:15:13,477 tasks 23624 17236 register_borrower_task: registration=d9e4896e-446c-4241-99db-2db4b62c728c FAILED — Invalid identity number
+INFO 2026-08-10 06:15:13,497 tasks 23624 17236 register_borrower_task: registration=b94e443a-1f36-41a1-8886-6501ee676ac0 registered lms_customer_id=cust-uuid-1
+ERROR 2026-08-10 06:15:13,526 tasks 23624 17236 upload_kyc_documents_task: registration=88b0b6da-e438-42cd-98e4-25a8f9187a6e KYC upload FAILED — Bad photo
+INFO 2026-08-10 06:15:13,561 tasks 23624 17236 upload_kyc_documents_task: registration=0b8d46db-e49f-4c7c-a1b7-943915703535 all KYC documents uploaded
+WARNING 2026-08-10 06:17:26,205 log 18672 11740 Bad Request: /api/customers/registrations/
+INFO 2026-08-10 06:17:26,230 views 18672 11740 CustomerRegistration created: id=4f8d9f15-4ecd-4e78-8bc2-cf98132a7321 org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+INFO 2026-08-10 06:17:26,261 views 18672 11740 CustomerRegistration created: id=fe10f3a5-d93a-4cae-8c5f-d287ec5417e6 org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+WARNING 2026-08-10 06:17:26,271 log 18672 11740 Bad Request: /api/customers/registrations/
+ERROR 2026-08-10 06:17:26,292 tasks 18672 11740 register_borrower_task: registration=281381e9-33a0-47fb-adfa-a5ed9d70a686 FAILED — Invalid identity number
+INFO 2026-08-10 06:17:26,310 tasks 18672 11740 register_borrower_task: registration=646b8fec-e082-4e2b-8609-63f14adf5366 registered lms_customer_id=cust-uuid-1
+ERROR 2026-08-10 06:17:26,336 tasks 18672 11740 upload_kyc_documents_task: registration=04b5f482-d098-41d2-bb3a-2d5de663b408 KYC upload FAILED — Bad photo
+INFO 2026-08-10 06:17:26,365 tasks 18672 11740 upload_kyc_documents_task: registration=ec1ba675-19f0-4cd3-bb5a-80fd689428e5 all KYC documents uploaded
+WARNING 2026-08-10 06:47:53,091 log 12872 6348 Forbidden: /api/v1/uploads/
+WARNING 2026-08-10 06:47:53,102 log 12872 6348 Bad Request: /api/v1/uploads/
+WARNING 2026-08-10 06:47:53,150 log 12872 6348 Unauthorized: /api/v1/uploads/
+WARNING 2026-08-10 06:47:53,163 log 12872 6348 Forbidden: /api/v1/uploads/
+WARNING 2026-08-10 06:47:53,183 log 12872 6348 Not Found: /api/v1/uploads/1988135e-8569-452b-a535-d9fe011617f6/
+WARNING 2026-08-10 06:47:53,278 log 12872 6348 Forbidden: /api/v1/uploads/
+WARNING 2026-08-10 06:47:53,306 log 12872 6348 Unauthorized: /api/v1/uploads/

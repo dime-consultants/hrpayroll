@@ -15,10 +15,10 @@ import logging
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.organizations.utils import get_hr_org as _get_hr_org
 from .models import LoanRequest, LoanRequestBatch, LoanRequestUpload
 from .serializers import (
     LoanRequestBatchSerializer,
@@ -29,14 +29,6 @@ from .serializers import (
 )
 
 log = logging.getLogger(__name__)
-
-
-def _get_hr_org(request):
-    """Return the CheckoffOrganizationMirror for the requesting HR user, or raise."""
-    try:
-        return request.user.hr_profile.organization
-    except Exception:
-        raise PermissionDenied('User has no HR profile linked to an organisation.')
 
 
 # ─────────────────────────────────────────────────────────────
