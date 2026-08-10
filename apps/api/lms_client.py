@@ -861,3 +861,180 @@ def bulk_set_loan_limits(customers: list[dict]) -> dict:
             'results':   all_results,
         },
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# Public entry point — customer registration & KYC (apps.customers)
+#
+# Registering a borrower and uploading their KYC documents are real,
+# hard-to-undo LMS writes (same class of call as send_repayment above), so
+# both functions get the full circuit-breaker + error-classification
+# treatment rather than the bare try/except used by the read-only calls
+# above (get_customer_balances etc.), where a failed read just means
+# "treat as ineligible" and isn't worth protecting this heavily.
+#
+# Both return (response_body, classification) — classification is None on
+# success. Callers (apps.customers.tasks) use the classification to decide
+# whether to retry via get_retry_countdown() or fail the row outright.
+# ─────────────────────────────────────────────────────────────
+
+def register_borrower(payload: dict):
+    """
+    POST /api/main/register-borrower/
+
+    NOTE: unlike every other call in this file, this LMS endpoint requires
+    NO Authorization header — confirmed per the LMS API spec.
+    """
+    circuit_breaker = LMSCircuitBreaker(endpoint='lms_register_borrower')
+    if circuit_breaker.is_open():
+        log.warning('Circuit breaker OPEN — rejecting register_borrower (LMS temporarily unavailable)')
+        return (
+            {'code': 'circuit_open', 'message': 'LMS endpoint temporarily unavailable — circuit breaker open'},
+            ErrorClassification.TRANSIENT,
+        )
+
+    try:
+        resp = _get_session().post(
+            f'{settings.LMS_BASE_URL}/api/main/register-borrower/',
+            json=payload,
+            headers={'Content-Type': 'application/json'},
+            timeout=settings.LMS_TIMEOUT,
+            verify=True,
+        )
+        body = _safe_json(resp)
+        code = str(body.get('code', resp.status_code))
+        success = code.startswith('200')
+
+        if success:
+            circuit_breaker.record_success()
+            log.info(
+                'register_borrower success | phone=%s customer_id=%s',
+                payload.get('phone_number'), body.get('data', {}).get('customer_id'),
+            )
+            return body, None
+
+        error_class = classify_lms_response_error(code, body)
+        if error_class == ErrorClassification.TRANSIENT:
+            circuit_breaker.record_failure()
+        log.warning(
+            'register_borrower failed | phone=%s code=%s message=%s',
+            payload.get('phone_number'), code, body.get('message'),
+        )
+        return body, error_class
+
+    except requests.exceptions.ConnectionError as exc:
+        circuit_breaker.record_failure()
+        log.warning('register_borrower connection error: %s', exc)
+        return {'error': str(exc)}, ErrorClassification.NETWORK
+
+    except requests.exceptions.Timeout as exc:
+        circuit_breaker.record_failure()
+        log.warning('register_borrower timeout: %s', exc)
+        return {'error': str(exc)}, ErrorClassification.NETWORK
+
+    except requests.HTTPError as exc:
+        classification = classify_request_error(exc)
+        if classification == ErrorClassification.TRANSIENT:
+            circuit_breaker.record_failure()
+        log.error('register_borrower HTTP error: %s', exc)
+        return {'error': str(exc)}, classification
+
+    except requests.RequestException as exc:
+        classification = classify_request_error(exc)
+        log.error('register_borrower request error: %s', exc)
+        return {'error': str(exc)}, classification
+
+
+def upload_kyc_document(customer_id: str, document_type: str, files: dict):
+    """
+    POST /api/kyc/documents/upload/
+
+    Bearer auth required (same partner token as every other call below
+    send_repayment). multipart/form-data.
+
+    files: dict of only the photo fields that apply for this document_type,
+    e.g. {'front_side_photo': <file obj>, 'back_side_photo': <file obj>,
+    'selfie_photo': <file obj>}. Callers are responsible for the file
+    objects being open and seekable (a 401 retry re-reads them from 0).
+    """
+    circuit_breaker = LMSCircuitBreaker(endpoint='lms_kyc_upload')
+    if circuit_breaker.is_open():
+        log.warning('Circuit breaker OPEN — rejecting upload_kyc_document for customer %s', customer_id)
+        return (
+            {'code': 'circuit_open', 'message': 'LMS endpoint temporarily unavailable — circuit breaker open'},
+            ErrorClassification.TRANSIENT,
+        )
+
+    data = {'customer_id': customer_id, 'document_type': document_type}
+
+    def _build_files():
+        upload_files = {}
+        for field_name, f in files.items():
+            f.seek(0)
+            upload_files[field_name] = (getattr(f, 'name', field_name), f, getattr(f, 'content_type', 'application/octet-stream'))
+        return upload_files
+
+    try:
+        resp = _get_session().post(
+            f'{settings.LMS_BASE_URL}/api/kyc/documents/upload/',
+            data=data,
+            files=_build_files(),
+            headers={'Authorization': f'Bearer {_get_auth_token()}'},
+            timeout=settings.LMS_TIMEOUT,
+            verify=True,
+        )
+
+        if resp.status_code == 401:
+            log.warning('upload_kyc_document got 401 — refreshing token and retrying once')
+            invalidate_token_cache()
+            resp = _get_session().post(
+                f'{settings.LMS_BASE_URL}/api/kyc/documents/upload/',
+                data=data,
+                files=_build_files(),
+                headers={'Authorization': f'Bearer {_get_auth_token()}'},
+                timeout=settings.LMS_TIMEOUT,
+                verify=True,
+            )
+
+        body = _safe_json(resp)
+        code = str(body.get('code', resp.status_code))
+        success = code.startswith('200')
+
+        if success:
+            circuit_breaker.record_success()
+            log.info(
+                'upload_kyc_document success | customer_id=%s document_type=%s',
+                customer_id, document_type,
+            )
+            return body, None
+
+        error_class = classify_lms_response_error(code, body)
+        if error_class == ErrorClassification.TRANSIENT:
+            circuit_breaker.record_failure()
+        log.warning(
+            'upload_kyc_document failed | customer_id=%s document_type=%s code=%s message=%s',
+            customer_id, document_type, code, body.get('message'),
+        )
+        return body, error_class
+
+    except requests.exceptions.ConnectionError as exc:
+        circuit_breaker.record_failure()
+        log.warning('upload_kyc_document connection error: %s', exc)
+        return {'error': str(exc)}, ErrorClassification.NETWORK
+
+    except requests.exceptions.Timeout as exc:
+        circuit_breaker.record_failure()
+        log.warning('upload_kyc_document timeout: %s', exc)
+        return {'error': str(exc)}, ErrorClassification.NETWORK
+
+    except requests.HTTPError as exc:
+        classification = classify_request_error(exc)
+        if classification == ErrorClassification.TRANSIENT:
+            circuit_breaker.record_failure()
+        log.error('upload_kyc_document HTTP error: %s', exc)
+        return {'error': str(exc)}, classification
+
+    except requests.RequestException as exc:
+        classification = classify_request_error(exc)
+        log.error('upload_kyc_document request error: %s', exc)
+        return {'error': str(exc)}, classification
