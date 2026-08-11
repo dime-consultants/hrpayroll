@@ -209,7 +209,7 @@ class CustomerRegistrationAdminActionTests(TestCase):
 
     @patch('apps.customers.tasks.register_borrower_task.delay')
     @patch('apps.api.lms_client.get_customer_exclusive')
-    def test_reprocess_registrations_from_failed_resets_and_fires_task(self, mock_lookup, mock_delay):
+    def test_reprocess_registrations_from_failed_resets_without_firing_task(self, mock_lookup, mock_delay):
         mock_lookup.return_value = None  # not found in LMS — safe to reprocess
         self.model_admin.reprocess_registrations(
             self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
@@ -219,7 +219,7 @@ class CustomerRegistrationAdminActionTests(TestCase):
         self.assertEqual(self.registration.status, CustomerRegistration.STATUS_APPROVAL_PENDING)
         self.assertEqual(self.registration.failure_reason, '')
         mock_lookup.assert_called_once_with(self.registration.phone_number)
-        mock_delay.assert_called_once_with(str(self.registration.id))
+        mock_delay.assert_not_called()
 
     @patch('apps.customers.tasks.register_borrower_task.delay')
     @patch('apps.api.lms_client.get_customer_exclusive')
@@ -274,7 +274,7 @@ class CustomerRegistrationAdminActionTests(TestCase):
 
         self.registration.refresh_from_db()
         self.assertEqual(self.registration.status, CustomerRegistration.STATUS_APPROVAL_PENDING)
-        mock_delay.assert_called_once_with(str(self.registration.id))
+        mock_delay.assert_not_called()
 
     @patch('apps.customers.tasks.register_borrower_task.delay')
     @patch('apps.api.lms_client.get_customer_exclusive')
@@ -294,7 +294,7 @@ class CustomerRegistrationAdminActionTests(TestCase):
 
         doc.refresh_from_db()
         self.assertEqual(doc.status, KYCDocument.STATUS_APPROVED)
-        mock_delay.assert_called_once_with(str(self.registration.id))
+        mock_delay.assert_not_called()
 
     def test_mark_as_failed_sets_status_and_reason(self):
         self.registration.status = CustomerRegistration.STATUS_PROCESSING
