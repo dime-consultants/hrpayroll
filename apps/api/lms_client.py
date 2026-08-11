@@ -598,6 +598,7 @@ def get_customer_exclusive(phone_number: str) -> dict | None:
                 'full_name': full_name,
                 'first_name': data.get('first_name', ''),
                 'last_name': data.get('last_name', ''),
+                'status': data.get('status', ''),
             }
             cache.set(cache_key, result, timeout=_CUSTOMER_CACHE_TTL)
             return result
