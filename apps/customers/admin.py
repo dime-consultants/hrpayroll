@@ -213,7 +213,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
             # Belt-and-braces: even a locally "failed"/"partial"/"processing" registration
             # may already have a real borrower record at the LMS — check before re-registering.
             customer = get_customer_exclusive(registration.phone_number)
-            if customer and customer.get('status') == 'active':
+            if customer and customer.get('status', '').lower() == 'active':
                 self.message_user(
                     request,
                     f'Registration {registration.id} skipped — borrower is already active in the LMS.',
