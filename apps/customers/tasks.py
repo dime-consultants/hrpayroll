@@ -4,7 +4,10 @@ apps/customers/tasks.py
 Two-step pipeline fired after a CustomerRegistration is approved in Django
 Admin (mirrors apps/loans/tasks.py's parse → eligibility pipeline):
 
-  1. register_borrower_task   — registers the borrower with the LMS
+  1. register_borrower_task    — registers the borrower with the LMS.
+                                  status: approval_pending → processing →
+                                  active (only once the LMS confirms with
+                                  response code "200.001") → done/partial/failed
   2. upload_kyc_documents_task — bundles the KYC photos into one LMS call
 
 Both consume the ErrorClassification that apps.api.lms_client.register_borrower /
@@ -48,7 +51,7 @@ def register_borrower_task(self, registration_id: str):
         return
 
     if registration.status not in (
-        CustomerRegistration.STATUS_ACTIVE,
+        CustomerRegistration.STATUS_APPROVAL_PENDING,
         CustomerRegistration.STATUS_PROCESSING,
     ):
         log.warning(
@@ -86,11 +89,16 @@ def register_borrower_task(self, registration_id: str):
         data = body.get('data', {})
         registration.lms_customer_id  = data.get('customer_id', '')
         registration.lms_loan_disk_id = data.get('loan_disk_id', '')
-        registration.save(update_fields=['registration_response', 'lms_customer_id', 'lms_loan_disk_id'])
+        # Only the exact LMS success code flips the registration to active —
+        # a looser 200.x that isn't 200.001 leaves it at "processing" so it
+        # doesn't silently claim an active borrower the LMS didn't confirm.
+        if body.get('code') == '200.001':
+            registration.status = CustomerRegistration.STATUS_ACTIVE
+        registration.save(update_fields=['registration_response', 'lms_customer_id', 'lms_loan_disk_id', 'status'])
 
         log.info(
-            'register_borrower_task: registration=%s registered lms_customer_id=%s',
-            registration_id, registration.lms_customer_id,
+            'register_borrower_task: registration=%s registered lms_customer_id=%s status=%s',
+            registration_id, registration.lms_customer_id, registration.status,
         )
         upload_kyc_documents_task.delay(str(registration.id))
         return

@@ -1393,3 +1393,12 @@ ERROR 2026-08-10 15:28:57,392 tasks 11008 11892 register_borrower_task: registra
 INFO 2026-08-10 15:28:57,408 tasks 11008 11892 register_borrower_task: registration=9399c56a-8609-4544-9bcd-4899f56825c5 registered lms_customer_id=cust-uuid-1
 ERROR 2026-08-10 15:28:57,459 tasks 11008 11892 upload_kyc_documents_task: registration=ae778966-1f22-4d15-ae0b-c7538b3af8cf KYC upload FAILED — Bad photo
 INFO 2026-08-10 15:28:57,492 tasks 11008 11892 upload_kyc_documents_task: registration=53ae145e-9376-474a-8378-efa388947b4d all KYC documents uploaded
+WARNING 2026-08-11 10:12:58,755 log 2040 17604 Bad Request: /api/customers/registrations/
+INFO 2026-08-11 10:12:58,772 views 2040 17604 CustomerRegistration created: id=f7c240ee-64b8-4283-b557-cfe90e405f6e org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+INFO 2026-08-11 10:12:58,788 views 2040 17604 CustomerRegistration created: id=214c6ed7-aaf0-42ca-8f71-5ff930929e6a org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+WARNING 2026-08-11 10:12:58,806 log 2040 17604 Bad Request: /api/customers/registrations/
+ERROR 2026-08-11 10:12:58,822 tasks 2040 17604 register_borrower_task: registration=9399a94a-8595-4b70-adb3-10e4b6675d72 FAILED — Invalid identity number
+INFO 2026-08-11 10:12:58,847 tasks 2040 17604 register_borrower_task: registration=e68d4dd4-cfe6-418c-a84a-23c2876d7404 registered lms_customer_id=cust-uuid-1 status=active
+INFO 2026-08-11 10:12:58,868 tasks 2040 17604 register_borrower_task: registration=60dd282f-038c-4047-8a59-f64a393afb00 registered lms_customer_id=cust-uuid-2 status=processing
+ERROR 2026-08-11 10:12:58,888 tasks 2040 17604 upload_kyc_documents_task: registration=35711e2a-1271-4070-bb78-95f517f3bac4 KYC upload FAILED — Bad photo
+INFO 2026-08-11 10:12:58,959 tasks 2040 17604 upload_kyc_documents_task: registration=4c7337f6-0c2e-434f-9a60-7b790fc8f91a all KYC documents uploaded

@@ -97,7 +97,7 @@ class CustomerRegistrationTaskTests(TestCase):
         )
         self.registration = CustomerRegistration.objects.create(
             organization=self.org,
-            status=CustomerRegistration.STATUS_ACTIVE,
+            status=CustomerRegistration.STATUS_APPROVAL_PENDING,
             first_name='Joe', last_name='Doe', gender='Male',
             date_of_birth='1998-03-12', identity_number='36789107',
             phone_number='254700000000',
@@ -119,6 +119,22 @@ class CustomerRegistrationTaskTests(TestCase):
 
         self.registration.refresh_from_db()
         self.assertEqual(self.registration.lms_customer_id, 'cust-uuid-1')
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_ACTIVE)
+        mock_kyc_delay.assert_called_once_with(str(self.registration.id))
+
+    @patch('apps.customers.tasks.upload_kyc_documents_task.delay')
+    @patch('apps.api.lms_client.register_borrower')
+    def test_register_borrower_task_success_non_200_001_code_stays_processing(self, mock_register, mock_kyc_delay):
+        # Success (2xx, no retry) but not the exact "200.001" code — status
+        # should NOT jump to active, only registration_response/customer id are stored.
+        mock_register.return_value = (
+            {'code': '200.002', 'message': 'ok', 'data': {'customer_id': 'cust-uuid-2', 'loan_disk_id': '778'}},
+            None,
+        )
+        register_borrower_task(str(self.registration.id))
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.lms_customer_id, 'cust-uuid-2')
         self.assertEqual(self.registration.status, CustomerRegistration.STATUS_PROCESSING)
         mock_kyc_delay.assert_called_once_with(str(self.registration.id))
 
