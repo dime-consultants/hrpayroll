@@ -1466,3 +1466,16 @@ INFO 2026-08-11 14:18:20,794 tasks 5332 12096 register_borrower_task: registrati
 INFO 2026-08-11 14:18:20,802 tasks 5332 12096 register_borrower_task: registration=eb2754d1-8dcd-4714-b5fb-1ff97215b96b registered lms_customer_id=cust-uuid-2 status=processing
 ERROR 2026-08-11 14:18:20,825 tasks 5332 12096 upload_kyc_documents_task: registration=385454ff-42c2-4732-98eb-92ae2c93a7eb KYC upload FAILED — Bad photo
 INFO 2026-08-11 14:18:20,844 tasks 5332 12096 upload_kyc_documents_task: registration=2d76119a-1f75-4b9c-ab0b-892d6d29f29f all KYC documents uploaded
+INFO 2026-08-11 15:27:38,307 admin 15340 19696 Admin admin@apptivate.africa manually marked customer registration ea05b9ce-4efa-4147-9dfb-4cb602abc087 as failed
+INFO 2026-08-11 15:27:38,314 admin 15340 19696 Admin admin@apptivate.africa reprocessing customer registration 27392fc0-f61b-4d68-825a-c1780f520283
+INFO 2026-08-11 15:27:38,331 admin 15340 19696 Admin admin@apptivate.africa reprocessing customer registration 81bb46c4-71f9-4e09-ac9e-4898efd3d2fa
+INFO 2026-08-11 15:27:38,331 admin 15340 19696 Admin admin@apptivate.africa reprocessing customer registration 493b6da8-ed73-4819-a6b7-bbfe4b0b38f3
+WARNING 2026-08-11 15:27:38,431 log 15340 19696 Bad Request: /api/customers/registrations/
+INFO 2026-08-11 15:27:38,431 views 15340 19696 CustomerRegistration created: id=175ffb97-fbd0-44d5-97c4-03379cf4ebcc org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+INFO 2026-08-11 15:27:38,464 views 15340 19696 CustomerRegistration created: id=b4e6fccf-1bdb-4c3c-aa5a-6934229a6a6f org=APPTIVATE user=hr@apptivate.africa phone=254700000000
+WARNING 2026-08-11 15:27:38,464 log 15340 19696 Bad Request: /api/customers/registrations/
+ERROR 2026-08-11 15:27:38,481 tasks 15340 19696 register_borrower_task: registration=0fff18f4-1a78-4d53-bee7-c65c6d9bd1aa FAILED — Invalid identity number
+INFO 2026-08-11 15:27:38,481 tasks 15340 19696 register_borrower_task: registration=94503d3e-525f-4247-a3ff-716c5c93fcda registered lms_customer_id=cust-uuid-1 status=active
+INFO 2026-08-11 15:27:38,498 tasks 15340 19696 register_borrower_task: registration=828df6b2-b242-4e00-9230-38149cfd43db registered lms_customer_id=cust-uuid-2 status=processing
+ERROR 2026-08-11 15:27:38,518 tasks 15340 19696 upload_kyc_documents_task: registration=021d3a34-c274-4a46-976c-5ad7aa77e579 KYC upload FAILED — Bad photo
+INFO 2026-08-11 15:27:38,531 tasks 15340 19696 upload_kyc_documents_task: registration=6921f6f8-7aa2-4f2e-a6a7-3ec61a4c64fb all KYC documents uploaded
