@@ -14,7 +14,11 @@ Admin actions:
                                         fires register_borrower_task; status stays
                                         approval_pending until the LMS confirms
     - reject_registrations          → marks failed (pre-processing rejection)
-    - reprocess_failed_registrations → resets failed registrations to approval_pending and
+    - mark_as_failed                → force-marks selected registrations as failed regardless
+                                        of current status (manual override, e.g. a stuck
+                                        "processing" registration) — fires no LMS calls
+    - reprocess_registrations        → resets any registration that isn't already active/done
+                                        to approval_pending (re-approving its KYC docs) and
                                         re-fires register_borrower_task from scratch, unless
                                         the LMS already shows the borrower as active (skipped)
     - retry_kyc_upload              → re-fires upload_kyc_documents_task for partial/failed
@@ -99,7 +103,10 @@ class CustomerRegistrationAdmin(ModelAdmin):
         }),
     )
 
-    actions = ['approve_registrations', 'reject_registrations', 'reprocess_failed_registrations', 'retry_kyc_upload']
+    actions = [
+        'approve_registrations', 'reject_registrations', 'mark_as_failed',
+        'reprocess_registrations', 'retry_kyc_upload',
+    ]
 
     @display(description='ID')
     def id_short(self, obj):
@@ -161,21 +168,50 @@ class CustomerRegistrationAdmin(ModelAdmin):
         ).update(status=CustomerRegistration.STATUS_FAILED)
         self.message_user(request, f'{updated} registration(s) rejected.', messages.WARNING)
 
-    @action(description='🔁 Reprocess failed registrations (retry LMS registration from scratch)')
-    def reprocess_failed_registrations(self, request, queryset):
+    @action(description='🚫 Mark selected registrations as failed')
+    def mark_as_failed(self, request, queryset):
+        updated = 0
+        skipped = 0
+        for registration in queryset:
+            if registration.status == CustomerRegistration.STATUS_FAILED:
+                skipped += 1
+                continue
+            registration.status         = CustomerRegistration.STATUS_FAILED
+            registration.failure_reason = f'Manually marked as failed by {request.user}.'
+            registration.save(update_fields=['status', 'failure_reason'])
+            log.info('Admin %s manually marked customer registration %s as failed', request.user, registration.id)
+            updated += 1
+
+        if updated:
+            self.message_user(request, f'{updated} registration(s) marked as failed.', messages.WARNING)
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} registration(s) skipped — already failed.',
+                messages.WARNING,
+            )
+
+    @action(description='🔁 Reprocess registrations (retry LMS registration for anything not yet completed)')
+    def reprocess_registrations(self, request, queryset):
         from apps.api.lms_client import get_customer_exclusive
 
         from .tasks import register_borrower_task
 
+        # active/done are the two "already succeeded with the LMS" states — reprocessing
+        # those would attempt to register an already-registered borrower a second time.
+        already_succeeded = (CustomerRegistration.STATUS_ACTIVE, CustomerRegistration.STATUS_DONE)
+
         for registration in queryset:
-            if registration.status != CustomerRegistration.STATUS_FAILED:
+            if registration.status in already_succeeded:
                 self.message_user(
                     request,
-                    f'Registration {registration.id} skipped — only "Failed" registrations can be reprocessed.',
+                    f'Registration {registration.id} skipped — already {registration.get_status_display()}.',
                     messages.WARNING,
                 )
                 continue
 
+            # Belt-and-braces: even a locally "failed"/"partial"/"processing" registration
+            # may already have a real borrower record at the LMS — check before re-registering.
             customer = get_customer_exclusive(registration.phone_number)
             if customer and customer.get('status') == 'active':
                 self.message_user(
@@ -185,14 +221,21 @@ class CustomerRegistrationAdmin(ModelAdmin):
                 )
                 continue
 
+            original_status = registration.get_status_display()
+            # Re-approve the KYC docs too — covers approval_pending (never approved yet)
+            # and partial/failed (some docs may be marked failed from a prior attempt).
+            registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
             registration.status         = CustomerRegistration.STATUS_APPROVAL_PENDING
             registration.failure_reason = ''
             registration.save(update_fields=['status', 'failure_reason'])
             register_borrower_task.delay(str(registration.id))
-            log.info('Admin %s reprocessing failed customer registration %s', request.user, registration.id)
+            log.info(
+                'Admin %s reprocessing customer registration %s (was %s)',
+                request.user, registration.id, original_status,
+            )
             self.message_user(
                 request,
-                f'Registration {registration.id} reprocessed and queued for LMS registration.',
+                f'Registration {registration.id} reprocessed (was {original_status}) and queued for LMS registration.',
                 messages.SUCCESS,
             )
 

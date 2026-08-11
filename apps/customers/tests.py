@@ -1,12 +1,16 @@
 from unittest.mock import patch
 
+from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.messages.storage.fallback import FallbackStorage
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from rest_framework.test import APIClient
 
 from apps.api.error_handling import ErrorClassification
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser
+from .admin import CustomerRegistrationAdmin
 from .models import CustomerRegistration, KYCDocument
 from .tasks import register_borrower_task, upload_kyc_documents_task
 
@@ -177,3 +181,136 @@ class CustomerRegistrationTaskTests(TestCase):
         self.assertTrue(
             all(d.status == KYCDocument.STATUS_FAILED for d in self.registration.kyc_documents.all())
         )
+
+
+class CustomerRegistrationAdminActionTests(TestCase):
+    def setUp(self):
+        self.org = CheckoffOrganizationMirror.objects.create(
+            lms_id='org-lms-3', name='APPTIVATE AFRICA', code='APPTIVATE3',
+        )
+        self.admin_user, _ = User.objects.create_user(email='admin@apptivate.africa', password='pass1234')
+        self.registration = CustomerRegistration.objects.create(
+            organization=self.org,
+            status=CustomerRegistration.STATUS_FAILED,
+            failure_reason='Invalid identity number',
+            first_name='Joe', last_name='Doe', gender='Male',
+            date_of_birth='1998-03-12', identity_number='36789107',
+            phone_number='254700000000',
+        )
+        self.model_admin = CustomerRegistrationAdmin(CustomerRegistration, admin.site)
+
+    def _request(self):
+        request = RequestFactory().post('/admin/customers/customerregistration/')
+        request.user = self.admin_user
+        SessionMiddleware(lambda r: None).process_request(request)
+        request.session.save()
+        request._messages = FallbackStorage(request)
+        return request
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    @patch('apps.api.lms_client.get_customer_exclusive')
+    def test_reprocess_registrations_from_failed_resets_and_fires_task(self, mock_lookup, mock_delay):
+        mock_lookup.return_value = None  # not found in LMS — safe to reprocess
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_APPROVAL_PENDING)
+        self.assertEqual(self.registration.failure_reason, '')
+        mock_lookup.assert_called_once_with(self.registration.phone_number)
+        mock_delay.assert_called_once_with(str(self.registration.id))
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    @patch('apps.api.lms_client.get_customer_exclusive')
+    def test_reprocess_registrations_skips_when_already_active_in_lms(self, mock_lookup, mock_delay):
+        mock_lookup.return_value = {'status': 'active'}
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_FAILED)
+        mock_delay.assert_not_called()
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    def test_reprocess_registrations_skips_active_status(self, mock_delay):
+        self.registration.status = CustomerRegistration.STATUS_ACTIVE
+        self.registration.save(update_fields=['status'])
+
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_ACTIVE)
+        mock_delay.assert_not_called()
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    def test_reprocess_registrations_skips_done_status(self, mock_delay):
+        self.registration.status = CustomerRegistration.STATUS_DONE
+        self.registration.save(update_fields=['status'])
+
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_DONE)
+        mock_delay.assert_not_called()
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    @patch('apps.api.lms_client.get_customer_exclusive')
+    def test_reprocess_registrations_includes_processing_status(self, mock_lookup, mock_delay):
+        mock_lookup.return_value = None
+        self.registration.status = CustomerRegistration.STATUS_PROCESSING
+        self.registration.save(update_fields=['status'])
+
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_APPROVAL_PENDING)
+        mock_delay.assert_called_once_with(str(self.registration.id))
+
+    @patch('apps.customers.tasks.register_borrower_task.delay')
+    @patch('apps.api.lms_client.get_customer_exclusive')
+    def test_reprocess_registrations_from_approval_pending_marks_kyc_docs_approved(self, mock_lookup, mock_delay):
+        mock_lookup.return_value = None
+        self.registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
+        self.registration.failure_reason = ''
+        self.registration.save(update_fields=['status', 'failure_reason'])
+        doc = KYCDocument.objects.create(
+            registration=self.registration, document_type=KYCDocument.DOC_SELFIE,
+            file=_tiny_jpeg('selfie.jpg'), status=KYCDocument.STATUS_APPROVAL_PENDING,
+        )
+
+        self.model_admin.reprocess_registrations(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, KYCDocument.STATUS_APPROVED)
+        mock_delay.assert_called_once_with(str(self.registration.id))
+
+    def test_mark_as_failed_sets_status_and_reason(self):
+        self.registration.status = CustomerRegistration.STATUS_PROCESSING
+        self.registration.save(update_fields=['status'])
+
+        self.model_admin.mark_as_failed(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_FAILED)
+        self.assertIn('admin@apptivate.africa', self.registration.failure_reason)
+
+    def test_mark_as_failed_skips_already_failed(self):
+        self.model_admin.mark_as_failed(
+            self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
+        )
+
+        self.registration.refresh_from_db()
+        # already failed in setUp — should be left untouched, not overwritten
+        self.assertEqual(self.registration.failure_reason, 'Invalid identity number')
