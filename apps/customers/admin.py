@@ -3,16 +3,19 @@ apps/customers/admin.py
 
 Flow:
   HR submits borrower + KYC docs → STATUS: approval_pending
-  Admin approves registration → register_borrower_task fires → borrower
-    registered with LMS → upload_kyc_documents_task fires → KYC uploaded
+  Admin approves registration → register_borrower_task fires → status becomes
+    active once the LMS confirms with response code "200.001" →
+    upload_kyc_documents_task fires → KYC uploaded
   Customer is now a fully onboarded LMS borrower.
 
 Admin actions:
   CustomerRegistrationAdmin:
-    - approve_registrations         → marks active (+ its KYC docs approved) + fires register_borrower_task
+    - approve_registrations         → stamps approved_by/at (+ its KYC docs approved) +
+                                        fires register_borrower_task; status stays
+                                        approval_pending until the LMS confirms
     - reject_registrations          → marks failed (pre-processing rejection)
-    - reprocess_failed_registrations → resets failed registrations to active and re-fires
-                                        register_borrower_task from scratch
+    - reprocess_failed_registrations → resets failed registrations to approval_pending
+                                        and re-fires register_borrower_task from scratch
     - retry_kyc_upload              → re-fires upload_kyc_documents_task for partial/failed
                                         registrations without re-registering the borrower
 """
@@ -166,7 +169,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
             if registration.status != CustomerRegistration.STATUS_FAILED:
                 skipped += 1
                 continue
-            registration.status         = CustomerRegistration.STATUS_ACTIVE
+            registration.status         = CustomerRegistration.STATUS_APPROVAL_PENDING
             registration.failure_reason = ''
             registration.save(update_fields=['status', 'failure_reason'])
             register_borrower_task.delay(str(registration.id))

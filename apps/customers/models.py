@@ -4,7 +4,7 @@ apps/customers/models.py
 Tracks HR-initiated borrower onboarding (customer registration + KYC).
 
 Flow:
-  CustomerRegistration (approval_pending → active → processing → done/partial/failed)
+  CustomerRegistration (approval_pending → processing → active [LMS code "200.001"] → done/partial/failed)
       └── KYCDocument (approval_pending → approved → uploaded/failed)  [one row per photo slot]
 
 Key design decisions:
@@ -144,10 +144,12 @@ class CustomerRegistration(BaseModel):
         super().save(*args, **kwargs)
 
     def approve(self, user):
-        self.status      = self.STATUS_ACTIVE
+        # Status stays approval_pending here — register_borrower_task moves it
+        # to processing and only flips to active once the LMS confirms with
+        # response code "200.001".
         self.approved_by = user
         self.approved_at = timezone.now()
-        self.save(update_fields=['status', 'approved_by', 'approved_at'])
+        self.save(update_fields=['approved_by', 'approved_at'])
 
 
 # ─────────────────────────────────────────────────────────────
