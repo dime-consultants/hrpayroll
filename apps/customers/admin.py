@@ -169,34 +169,33 @@ class CustomerRegistrationAdmin(ModelAdmin):
         ).update(status=CustomerRegistration.STATUS_FAILED)
         self.message_user(request, f'{updated} registration(s) rejected.', messages.WARNING)
 
-    @action(description='🚫 Mark selected registrations as failed')
-    def mark_as_failed(self, request, queryset):
-        updated = 0
-        skipped = 0
-        for registration in queryset:
-            if registration.status == CustomerRegistration.STATUS_FAILED:
-                skipped += 1
-                continue
-            registration.status         = CustomerRegistration.STATUS_FAILED
-            registration.failure_reason = f'Manually marked as failed by {request.user}.'
-            registration.save(update_fields=['status', 'failure_reason'])
-            log.info('Admin %s manually marked customer registration %s as failed', request.user, registration.id)
-            updated += 1
+    # @action(description='🚫 Mark selected registrations as failed')
+    # def mark_as_failed(self, request, queryset):
+    #     updated = 0
+    #     skipped = 0
+    #     for registration in queryset:
+    #         if registration.status == CustomerRegistration.STATUS_FAILED:
+    #             skipped += 1
+    #             continue
+    #         registration.status         = CustomerRegistration.STATUS_FAILED
+    #         registration.failure_reason = f'Manually marked as failed by {request.user}.'
+    #         registration.save(update_fields=['status', 'failure_reason'])
+    #         log.info('Admin %s manually marked customer registration %s as failed', request.user, registration.id)
+    #         updated += 1
 
-        if updated:
-            self.message_user(request, f'{updated} registration(s) marked as failed.', messages.WARNING)
-        if skipped:
-            self.message_user(
-                request,
-                f'{skipped} registration(s) skipped — already failed.',
-                messages.WARNING,
-            )
-
+    #     if updated:
+    #         self.message_user(request, f'{updated} registration(s) marked as failed.', messages.WARNING)
+    #     if skipped:
+    #         self.message_user(
+    #             request,
+    #             f'{skipped} registration(s) skipped — already failed.',
+    #             messages.WARNING,
+    #         )
+            
     @action(description='🔁 Reprocess registrations (reset anything not yet completed back to approval pending)')
-    def reprocess_registrations(self, request, phone_number, queryset):
+    def reprocess_registrations(self, request, queryset):
         from apps.api.lms_client import get_customer_exclusive
 
-        # Track LMS statuses for each registration
         lms_statuses = {}
         for registration in queryset:
             if not registration.lms_customer_id:
@@ -209,7 +208,6 @@ class CustomerRegistrationAdmin(ModelAdmin):
         skipped = 0
 
         for registration in queryset:
-            # Skip already completed/active registrations
             if registration.status in (
                 CustomerRegistration.STATUS_ACTIVE,
                 CustomerRegistration.STATUS_DONE,
@@ -217,22 +215,30 @@ class CustomerRegistrationAdmin(ModelAdmin):
                 skipped += 1
                 continue
 
-            # Apply LMS status if available, otherwise reset to approval pending
             lms_status = lms_statuses.get(registration.id)
             if lms_status:
                 registration.status = lms_status
             else:
                 registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
+                registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
 
             registration.save(update_fields=['status'])
+            log.info('Admin %s reprocessed customer registration %s', request.user, registration.id)
             updated += 1
 
-        return {
-            "updated": updated,
-            "skipped": skipped,
-            "total": queryset.count(),
-        }
-            
+        if updated:
+            self.message_user(
+                request,
+                f'{updated} registration(s) reset. Use "Approve" to retry with the LMS.',
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} registration(s) skipped — already active or completed.',
+                messages.WARNING,
+            )
+                
 
 
 
