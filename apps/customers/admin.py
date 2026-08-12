@@ -200,9 +200,8 @@ class CustomerRegistrationAdmin(ModelAdmin):
         for registration in queryset:
             if not registration.lms_customer_id:
                 continue
-            lms_statuses[registration.id] = get_customer_exclusive(
-                registration.lms_customer_id
-            ).get('status')
+            result = get_customer_exclusive(registration.lms_customer_id)
+            lms_statuses[registration.id] = result.get('status') if result else None
 
         updated = 0
         skipped = 0
