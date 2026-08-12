@@ -80,6 +80,7 @@ def register_borrower_task(self, registration_id: str):
         'identity_type_name':    registration.identity_type_name,
         'borrower_type':         registration.borrower_type,
         'checkoff_organization': registration.organization.name,
+        'partner':               registration.organization.name,
     }
 
     body, classification = register_borrower(payload)

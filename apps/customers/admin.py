@@ -17,11 +17,10 @@ Admin actions:
     - mark_as_failed                → force-marks selected registrations as failed regardless
                                         of current status (manual override, e.g. a stuck
                                         "processing" registration) — fires no LMS calls
-    - reprocess_registrations        → resets any registration that isn't already active/done
-                                        back to approval_pending (re-approving its KYC docs),
-                                        unless the LMS already shows the borrower as active
-                                        (skipped); does NOT fire register_borrower_task itself —
-                                        use approve_registrations afterwards to actually retry
+    - reprocess_registrations        → looks up each registration by phone_number in the LMS;
+                                        if found, applies the LMS status; if not found, resets
+                                        to approval_pending for a fresh approval + registration
+                                        attempt
     - retry_kyc_upload              → re-fires upload_kyc_documents_task for partial/failed
                                         registrations without re-registering the borrower
 """
@@ -72,7 +71,8 @@ class CustomerRegistrationAdmin(ModelAdmin):
     readonly_fields = (
         'id', 'status', 'lms_customer_id', 'lms_loan_disk_id',
         'registration_response', 'failure_reason', 'idempotency_key',
-        'approved_by', 'approved_at', 'date_created', 'date_modified',
+        'approved_by', 'approved_at', 'submitted_by', 'organization',
+        'date_created', 'date_modified',
     )
     inlines       = [KYCDocumentInline]
     date_hierarchy = 'date_created'
@@ -109,6 +109,30 @@ class CustomerRegistrationAdmin(ModelAdmin):
         'reprocess_registrations', 'retry_kyc_upload',
     ]
 
+    # ── auto-populate organization + submitted_by ──────────────────────────
+
+    def get_readonly_fields(self, request, obj=None):
+        # On the add form keep organization/submitted_by writable so
+        # save_model can stamp them; after creation they become readonly.
+        if obj is None:
+            return tuple(f for f in self.readonly_fields
+                         if f not in ('organization', 'submitted_by'))
+        return self.readonly_fields
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.submitted_by = request.user
+            try:
+                obj.organization = request.user.hr_profile.organization
+            except Exception:
+                log.warning(
+                    'save_model: could not derive organization from user %s — '
+                    'please set it manually', request.user,
+                )
+        super().save_model(request, obj, form, change)
+
+    # ── display helpers ────────────────────────────────────────────────────
+
     @display(description='ID')
     def id_short(self, obj):
         return str(obj.id)[:8]
@@ -133,6 +157,8 @@ class CustomerRegistrationAdmin(ModelAdmin):
             'border-radius:4px;font-size:11px">{}</span>',
             colour, obj.get_status_display(),
         )
+
+    # ── actions ────────────────────────────────────────────────────────────
 
     @action(description='✅ Approve selected registrations and register with LMS')
     def approve_registrations(self, request, queryset):
@@ -169,50 +195,53 @@ class CustomerRegistrationAdmin(ModelAdmin):
         ).update(status=CustomerRegistration.STATUS_FAILED)
         self.message_user(request, f'{updated} registration(s) rejected.', messages.WARNING)
 
-    # @action(description='🚫 Mark selected registrations as failed')
-    # def mark_as_failed(self, request, queryset):
-    #     updated = 0
-    #     skipped = 0
-    #     for registration in queryset:
-    #         if registration.status == CustomerRegistration.STATUS_FAILED:
-    #             skipped += 1
-    #             continue
-    #         registration.status         = CustomerRegistration.STATUS_FAILED
-    #         registration.failure_reason = f'Manually marked as failed by {request.user}.'
-    #         registration.save(update_fields=['status', 'failure_reason'])
-    #         log.info('Admin %s manually marked customer registration %s as failed', request.user, registration.id)
-    #         updated += 1
+    @action(description='🚫 Mark selected registrations as failed')
+    def mark_as_failed(self, request, queryset):
+        updated = 0
+        skipped = 0
+        for registration in queryset:
+            if registration.status == CustomerRegistration.STATUS_FAILED:
+                skipped += 1
+                continue
+            registration.status         = CustomerRegistration.STATUS_FAILED
+            registration.failure_reason = f'Manually marked as failed by {request.user}.'
+            registration.save(update_fields=['status', 'failure_reason'])
+            log.info('Admin %s manually marked customer registration %s as failed', request.user, registration.id)
+            updated += 1
 
-    #     if updated:
-    #         self.message_user(request, f'{updated} registration(s) marked as failed.', messages.WARNING)
-    #     if skipped:
-    #         self.message_user(
-    #             request,
-    #             f'{skipped} registration(s) skipped — already failed.',
-    #             messages.WARNING,
-    #         )
-            
-    @action(description='🔁 Reprocess registrations (reset anything not yet completed back to approval pending)')
+        if updated:
+            self.message_user(request, f'{updated} registration(s) marked as failed.', messages.WARNING)
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} registration(s) skipped — already failed.',
+                messages.WARNING,
+            )
+
+    @action(description='🔁 Reprocess registrations (sync status from LMS via phone number)')
     def reprocess_registrations(self, request, queryset):
         from apps.api.lms_client import get_customer_exclusive
 
-        lms_statuses = {}
-        for registration in queryset:
-            if not registration.lms_customer_id:
-                continue
-            result = get_customer_exclusive(registration.lms_customer_id)
-            if result and result.get('code') == '200.001':
-                lms_statuses[registration.id] = result.get('data', {}).get('status')
-            else:
-                lms_statuses[registration.id] = None
-
-        # LMS → local status map
         LMS_STATUS_MAP = {
             'Active':   CustomerRegistration.STATUS_ACTIVE,
             'Inactive': CustomerRegistration.STATUS_FAILED,
             'Pending':  CustomerRegistration.STATUS_PROCESSING,
         }
 
+        # ── Step 1: resolve LMS status for each registration via phone_number ──
+        lms_statuses = {}
+        for registration in queryset:
+            if not registration.phone_number:
+                lms_statuses[registration.id] = None
+                continue
+
+            result = get_customer_exclusive(registration.phone_number)
+            if result and result.get('code') == '200.001':
+                lms_statuses[registration.id] = result.get('data', {}).get('status')
+            else:
+                lms_statuses[registration.id] = None
+
+        # ── Step 2: apply resolved statuses ───────────────────────────────
         updated = 0
         skipped = 0
 
@@ -225,29 +254,36 @@ class CustomerRegistrationAdmin(ModelAdmin):
                 continue
 
             lms_status_raw = lms_statuses.get(registration.id)
+
             if lms_status_raw:
                 mapped = LMS_STATUS_MAP.get(lms_status_raw)
                 if mapped:
                     registration.status = mapped
                 else:
                     log.warning(
-                        'Unknown LMS status "%s" for registration %s — resetting to approval_pending',
+                        'reprocess_registrations: unknown LMS status "%s" for registration %s '
+                        '— resetting to approval_pending',
                         lms_status_raw, registration.id,
                     )
                     registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
                     registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
             else:
+                # No LMS record found — reset for a fresh approval + registration attempt
                 registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
                 registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
 
             registration.save(update_fields=['status'])
-            log.info('Admin %s reprocessed customer registration %s', request.user, registration.id)
+            log.info(
+                'Admin %s reprocessed customer registration %s → %s',
+                request.user, registration.id, registration.status,
+            )
             updated += 1
 
         if updated:
             self.message_user(
                 request,
-                f'{updated} registration(s) reprocessed. Use "Approve" on any reset to approval pending to retry with the LMS.',
+                f'{updated} registration(s) reprocessed. Use "Approve" on any reset to '
+                f'approval pending to retry with the LMS.',
                 messages.SUCCESS,
             )
         if skipped:
@@ -256,9 +292,6 @@ class CustomerRegistrationAdmin(ModelAdmin):
                 f'{skipped} registration(s) skipped — already active or completed.',
                 messages.WARNING,
             )
-                
-
-
 
     @action(description='🔄 Retry KYC upload for partial/failed registrations')
     def retry_kyc_upload(self, request, queryset):
