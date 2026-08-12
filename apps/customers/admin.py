@@ -201,7 +201,17 @@ class CustomerRegistrationAdmin(ModelAdmin):
             if not registration.lms_customer_id:
                 continue
             result = get_customer_exclusive(registration.lms_customer_id)
-            lms_statuses[registration.id] = result.get('status') if result else None
+            if result and result.get('code') == '200.001':
+                lms_statuses[registration.id] = result.get('data', {}).get('status')
+            else:
+                lms_statuses[registration.id] = None
+
+        # LMS → local status map
+        LMS_STATUS_MAP = {
+            'Active':   CustomerRegistration.STATUS_ACTIVE,
+            'Inactive': CustomerRegistration.STATUS_FAILED,
+            'Pending':  CustomerRegistration.STATUS_PROCESSING,
+        }
 
         updated = 0
         skipped = 0
@@ -214,9 +224,18 @@ class CustomerRegistrationAdmin(ModelAdmin):
                 skipped += 1
                 continue
 
-            lms_status = lms_statuses.get(registration.id)
-            if lms_status:
-                registration.status = lms_status
+            lms_status_raw = lms_statuses.get(registration.id)
+            if lms_status_raw:
+                mapped = LMS_STATUS_MAP.get(lms_status_raw)
+                if mapped:
+                    registration.status = mapped
+                else:
+                    log.warning(
+                        'Unknown LMS status "%s" for registration %s — resetting to approval_pending',
+                        lms_status_raw, registration.id,
+                    )
+                    registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
+                    registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
             else:
                 registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
                 registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
@@ -228,7 +247,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
         if updated:
             self.message_user(
                 request,
-                f'{updated} registration(s) reset. Use "Approve" to retry with the LMS.',
+                f'{updated} registration(s) reprocessed. Use "Approve" on any reset to approval pending to retry with the LMS.',
                 messages.SUCCESS,
             )
         if skipped:
