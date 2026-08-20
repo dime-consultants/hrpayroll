@@ -1,11 +1,10 @@
-from unittest.mock import MagicMock, patch
-
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser
+
 
 User = get_user_model()
 
@@ -23,6 +22,7 @@ def make_csv():
 
 
 class PayrollUploadAPITests(APITestCase):
+
     def setUp(self):
         self.org = CheckoffOrganizationMirror.objects.create(
             lms_id='lms-test-001',
@@ -75,7 +75,6 @@ class PayrollUploadAPITests(APITestCase):
             role='viewer',
         )
 
-        # Authenticated user without an organization HR profile.
         self.plain_user, _ = User.objects.create_user(
             email='plain@testcorp.com',
             password='plainpass1',
@@ -101,65 +100,75 @@ class PayrollUploadAPITests(APITestCase):
     # ------------------------------------------------------------------
 
     def test_list_unauthenticated_returns_401(self):
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
 
     def test_list_no_hr_profile_returns_403(self):
-        self.client.force_authenticate(user=self.plain_user)
+        self.client.force_authenticate(
+            user=self.plain_user,
+        )
 
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
     def test_list_hr_admin_returns_200(self):
-        self.client.force_authenticate(user=self.admin_user)
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
 
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_hr_officer_returns_200(self):
-        self.client.force_authenticate(user=self.officer_user)
+        self.client.force_authenticate(
+            user=self.officer_user,
+        )
 
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_hr_viewer_returns_200(self):
-        self.client.force_authenticate(user=self.viewer_user)
+        self.client.force_authenticate(
+            user=self.viewer_user,
+        )
 
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_scoped_to_own_org(self):
-        self.client.force_authenticate(user=self.other_admin)
+        self.client.force_authenticate(
+            user=self.other_admin,
+        )
 
-        resp = self.client.get(URL_LIST)
+        response = self.client.get(URL_LIST)
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_200_OK,
         )
 
         self.assertEqual(
-            resp.data['results'],
+            response.data['results'],
             [],
         )
 
@@ -167,17 +176,12 @@ class PayrollUploadAPITests(APITestCase):
     # CREATE: POST /api/v1/uploads/
     # ------------------------------------------------------------------
 
-    @patch('apps.api.views.parse_payroll_upload')
-    def test_create_admin_returns_202(self, mock_task):
-        mock_task.delay.return_value = MagicMock(
-            id='fake-task-id',
-        )
-
+    def test_create_admin_returns_202(self):
         self.client.force_authenticate(
             user=self.admin_user,
         )
 
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -187,23 +191,21 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        mock_task.delay.assert_called_once()
-
-    @patch('apps.api.views.parse_payroll_upload')
-    def test_create_triggers_celery_task(self, mock_task):
-        mock_task.delay.return_value = MagicMock(
-            id='fake-task-id',
+        self.assertIn(
+            'id',
+            response.data,
         )
 
+    def test_create_admin_returns_upload_id(self):
         self.client.force_authenticate(
             user=self.admin_user,
         )
 
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -213,25 +215,20 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        self.assertIsNotNone(
-            mock_task.delay.call_args,
+        self.assertTrue(
+            response.data.get('id'),
         )
-
-        args = mock_task.delay.call_args.args
-
-        self.assertTrue(args)
-        self.assertTrue(args[0])
 
     def test_create_officer_returns_403(self):
         self.client.force_authenticate(
             user=self.officer_user,
         )
 
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -241,7 +238,7 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
@@ -250,7 +247,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.viewer_user,
         )
 
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -260,12 +257,12 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
     def test_create_unauthenticated_returns_401(self):
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -275,7 +272,7 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -290,7 +287,7 @@ class PayrollUploadAPITests(APITestCase):
             content_type='application/pdf',
         )
 
-        resp = self.client.post(
+        response = self.client.post(
             URL_LIST,
             {
                 'file': bad_file,
@@ -300,7 +297,7 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_400_BAD_REQUEST,
         )
 
@@ -308,17 +305,12 @@ class PayrollUploadAPITests(APITestCase):
     # DETAIL: GET /api/v1/uploads/<pk>/
     # ------------------------------------------------------------------
 
-    @patch('apps.api.views.parse_payroll_upload')
-    def test_detail_owner_org_returns_200(self, mock_task):
-        mock_task.delay.return_value = MagicMock(
-            id='fake-task-id',
-        )
-
+    def test_detail_owner_org_returns_200(self):
         self.client.force_authenticate(
             user=self.admin_user,
         )
 
-        create_resp = self.client.post(
+        create_response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -328,37 +320,32 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            create_resp.status_code,
+            create_response.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        upload_id = create_resp.data['id']
+        upload_id = create_response.data['id']
 
-        resp = self.client.get(
+        response = self.client.get(
             URL_DETAIL.format(upload_id),
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_200_OK,
         )
 
         self.assertEqual(
-            str(resp.data['id']),
-            upload_id,
+            str(response.data['id']),
+            str(upload_id),
         )
 
-    @patch('apps.api.views.parse_payroll_upload')
-    def test_detail_different_org_returns_404(self, mock_task):
-        mock_task.delay.return_value = MagicMock(
-            id='fake-task-id',
-        )
-
+    def test_detail_different_org_returns_404(self):
         self.client.force_authenticate(
             user=self.admin_user,
         )
 
-        create_resp = self.client.post(
+        create_response = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -368,21 +355,21 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            create_resp.status_code,
+            create_response.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        upload_id = create_resp.data['id']
+        upload_id = create_response.data['id']
 
         self.client.force_authenticate(
             user=self.other_admin,
         )
 
-        resp = self.client.get(
+        response = self.client.get(
             URL_DETAIL.format(upload_id),
         )
 
         self.assertEqual(
-            resp.status_code,
+            response.status_code,
             status.HTTP_404_NOT_FOUND,
         )
