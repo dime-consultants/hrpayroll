@@ -2,13 +2,13 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from celery.schedules import crontab
-from decouple import config, Csv
+from decouple import os.environ.get, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='change-me-in-production')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config(
+SECRET_KEY = os.environ.get('SECRET_KEY', default='change-me-in-production')
+DEBUG = os.environ.get('DEBUG', default=False, cast=bool)
+ALLOWED_HOSTS = os.environ.get(
     'ALLOWED_HOSTS',
     default='hr.dimeapp.co.ke,localhost,127.0.0.1',
     cast=Csv()
@@ -106,18 +106,14 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DATABASE_DB', default='hr_payroll'),
-            'USER': config('DATABASE_USER', default='hr_payroll_user'),
-            'PASSWORD': config('DATABASE_PASSWORD', default='securepassword'),
-            'HOST': config('DATABASE_HOST', default='localhost'),
-            'PORT': config('DATABASE_PORT', default='5432'),
-            'CONN_MAX_AGE': 60,
-            'OPTIONS': {
-                'connect_timeout': 10,
-            },
+            'NAME': os.environ.get('DB_NAME', ''),
+            'USER': os.environ.get('DB_USER', ''),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
         }
     }
-REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
+REDIS_URL = os.environ.get('REDIS_URL', default='redis://redis:6379/0')
 
 if DEBUG:
     CACHES = {
@@ -126,7 +122,7 @@ if DEBUG:
         }
     }
 else:
-    REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
+    REDIS_URL = os.environ.get('REDIS_URL', default='redis://redis:6379/0')
 
     CACHES = {
         'default': {
@@ -201,12 +197,12 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': config('JWT_SECRET_KEY', default=SECRET_KEY),
+    'SIGNING_KEY': os.environ.get('JWT_SECRET_KEY', default=SECRET_KEY),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
 # ── CELERY ───────────────────────────────────────────────────
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL)
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', default=REDIS_URL)
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_CACHE_BACKEND = 'django-cache'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -232,21 +228,21 @@ CELERY_BEAT_SCHEDULE = {
 
 
 # ── LMS ──────────────────────────────────────────────────────
-LMS_BASE_URL             = config('LMS_BASE_URL', default='https://back.dimeapp.co.ke')
-LMS_CONSUMER_KEY         = config('LMS_CONSUMER_KEY', default='')#use only this
-LMS_CONSUMER_SECRET      = config('LMS_CONSUMER_SECRET', default='')#use only this to fetch token from lms
-LMS_TOKEN_URL            = config('LMS_TOKEN_URL', default='https://back.dimeapp.co.ke/api/partner/token/')
-LMS_SERVICE_USERNAME     = config('LMS_SERVICE_USERNAME', default='')
-LMS_SERVICE_PASSWORD     = config('LMS_SERVICE_PASSWORD', default='')
-LMS_TIMEOUT              = config('LMS_TIMEOUT', default=60, cast=int)
-LMS_RETRY_MAX            = config('LMS_RETRY_MAX', default=3, cast=int)
-LMS_RETRY_BACKOFF        = config('LMS_RETRY_BACKOFF', default=2, cast=int)
-LMS_REQUEST_POOL_SIZE    = config('LMS_REQUEST_POOL_SIZE', default=10, cast=int)
-LMS_REQUEST_POOL_MAXSIZE = config('LMS_REQUEST_POOL_MAXSIZE', default=20, cast=int)
+LMS_BASE_URL             = os.environ.get('LMS_BASE_URL', default='https://back.dimeapp.co.ke')
+LMS_CONSUMER_KEY         = os.environ.get('LMS_CONSUMER_KEY', default='')#use only this
+LMS_CONSUMER_SECRET      = os.environ.get('LMS_CONSUMER_SECRET', default='')#use only this to fetch token from lms
+LMS_TOKEN_URL            = os.environ.get('LMS_TOKEN_URL', default='https://back.dimeapp.co.ke/api/partner/token/')
+LMS_SERVICE_USERNAME     = os.environ.get('LMS_SERVICE_USERNAME', default='')
+LMS_SERVICE_PASSWORD     = os.environ.get('LMS_SERVICE_PASSWORD', default='')
+LMS_TIMEOUT              = os.environ.get('LMS_TIMEOUT', default=60, cast=int)
+LMS_RETRY_MAX            = os.environ.get('LMS_RETRY_MAX', default=3, cast=int)
+LMS_RETRY_BACKOFF        = os.environ.get('LMS_RETRY_BACKOFF', default=2, cast=int)
+LMS_REQUEST_POOL_SIZE    = os.environ.get('LMS_REQUEST_POOL_SIZE', default=10, cast=int)
+LMS_REQUEST_POOL_MAXSIZE = os.environ.get('LMS_REQUEST_POOL_MAXSIZE', default=20, cast=int)
 IDEMPOTENCY_KEY_TTL      = 60 * 60 * 24  # 24 hours
 
 # ── CORS ─────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config(
+CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
     default='https://hr.dimeapp.co.ke,http://localhost:5001,https://payroll.dimeapp.co.ke',
     cast=Csv()
