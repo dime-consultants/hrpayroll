@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from celery.schedules import crontab
-from decouple import os.environ.get, Csv
+from decouple import Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
