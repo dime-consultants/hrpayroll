@@ -106,11 +106,11 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME', default='hr_payroll'),
-            'USER': config('DB_USER', default='hr_payroll_user'),
-            'PASSWORD': config('DB_PASSWORD', default='securepassword'),
-            'HOST': config('DB_HOST', default='db'),
-            'PORT': config('DB_PORT', default='5432'),
+            'NAME': config('DATABASE_DB', default='hr_payroll'),
+            'USER': config('DATABASE_USER', default='hr_payroll_user'),
+            'PASSWORD': config('DATABASE_PASSWORD', default='securepassword'),
+            'HOST': config('DATABASE_HOST', default='postgres'),
+            'PORT': config('DATABASE_PORT', default='5432'),
             'CONN_MAX_AGE': 60,
             'OPTIONS': {
                 'connect_timeout': 10,
