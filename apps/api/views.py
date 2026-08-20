@@ -10,7 +10,6 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from apps.api.tasks import parse_payroll_upload
 
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser, AuditLog
 from apps.payroll.models import PayrollUpload, SalaryDeduction
