@@ -99,7 +99,7 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          IMAGE_NAME="ai_invoicing"
+          IMAGE_NAME="ai_hr"
           TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
           ENV_NAME="${{ steps.env.outputs.env }}"
 
@@ -147,9 +147,9 @@ jobs:
           fi
 
           if [[ "${{ steps.env.outputs.env }}" == "stage" ]]; then
-            SYSTEM_BASE_URL="stage-invoicing.dimeconsultants.africa"
+            SYSTEM_BASE_URL="stage-hr.dimeconsultants.africa"
           else
-            SYSTEM_BASE_URL="invoicing.dimeconsultants.africa"
+            SYSTEM_BASE_URL="hr.dimeconsultants.africa"
           fi
 
           JSON=$(echo "$JSON" | jq \
