@@ -27,7 +27,7 @@ def env_list(name,default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 SECRET_KEY=os.environ.get("SECRET_KEY","change-me-in-production")
-DEBUG=env_bool("DEBUG",False)
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS=env_list("ALLOWED_HOSTS","hr.dimeapp.co.ke,localhost,127.0.0.1")
 AUTH_USER_MODEL="users.User"
 
