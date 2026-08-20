@@ -1,0 +1,61 @@
+version: "3.9"
+
+x-django-env: &django-env
+  DEBUG: "False"
+  DJANGO_SETTINGS_MODULE: config.settings
+  SECRET_KEY: ${DJANGO_SECRET_KEY}
+
+  DB_NAME: ${DATABASE_DB}
+  DB_USER: ${DATABASE_USER}
+  DB_PASSWORD: ${DATABASE_PASSWORD}
+  DB_HOST: ${DATABASE_HOST}
+  DB_PORT: ${DATABASE_PORT}
+
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+
+  SYSTEM_BASE_URL: ${SYSTEM_BASE_URL:-hr.dimeconsultants.africa}
+
+x-app-image: &app-image ${IMAGE_TAG}
+
+x-common-labels: &common-labels
+  observability.app: hr
+  observability.environment: ${SHARED_ENV}
+
+networks:
+  default:
+    name: ${SHARED_NETWORK}
+    external: true
+
+services:
+  invoicing:
+    image: *app-image
+    container_name: ${SHARED_ENV}_hr_app
+    labels:
+      <<: *common-labels
+      observability.component: api
+    environment:
+      <<: *django-env
+    ports:
+      - "${API_PORT}:8000"
+    restart: always
+
+  celery_worker:
+    image: *app-image
+    container_name: ${SHARED_ENV}_hr_celery_worker
+    labels:
+      <<: *common-labels
+      observability.component: celery-worker
+    command: celery -A config worker -l INFO
+    environment:
+      <<: *django-env
+    restart: always
+  celery_beat:
+    image: *app-image
+    container_name: ${SHARED_ENV}_hr_celery_beat
+    labels:
+      <<: *common-labels
+      observability.component: celery-beat
+    command: celery -A config beat -l INFO
+    environment:
+      <<: *django-env
+    restart: always
