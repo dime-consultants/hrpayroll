@@ -1,160 +1,220 @@
-name: CI/CD — Docker build, push and deploy
+name: Build Image & Trigger Deployment
 
 on:
   push:
-    branches: [ master ]
-  workflow_dispatch:
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: kib4n4/dime-hr-payroll
+    branches:
+      - master
+      - main
+      - develop
 
 jobs:
-  build-and-push:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set short SHA tag
-        id: meta
-        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run migrations
+        run: |
+          python manage.py migrate --noinput
+
+      - name: Collect static files
+        run: |
+          python manage.py collectstatic --noinput --clear
+
+      - name: Run tests
+        run: |
+          python manage.py test
+
+  build-and-trigger:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # Validate that Docker Hub secrets exist.
+      # Do NOT print the actual values.
+      - name: Validate Docker Hub credentials
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "Error: DOCKERHUB_USERNAME is missing."
+            exit 1
+          fi
 
-      # One image, built once from docker/Dockerfile.prod, reused by web,
-      # celery_worker, celery_beat, and flower in docker-compose.prod.yml
-      # (they all build from the same Dockerfile already — this just lets
-      # the server pull instead of rebuild, which is what was eating disk
-      # space and /run on every deploy).
-      - name: Build and push image
-        uses: docker/build-push-action@v5
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "Error: DOCKERHUB_TOKEN is missing."
+            exit 1
+          fi
+
+          echo "Docker Hub credentials are configured."
+
+      # Using password-stdin instead of docker/login-action
+      # because of the malformed HTTP Authorization header issue.
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          printf '%s' "$DOCKERHUB_TOKEN" | \
+            docker login docker.io \
+              --username "$DOCKERHUB_USERNAME" \
+              --password-stdin
+
+      - name: Determine environment
+        id: env
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
+            echo "env=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=stage" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Docker image tag
+        id: tag
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          IMAGE_NAME="ai_invoicing"
+          TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
+          ENV_NAME="${{ steps.env.outputs.env }}"
+
+          IMAGE_TAG="${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${ENV_NAME}-${TIMESTAMP}"
+
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+
+          echo "Generated Docker image tag: $IMAGE_TAG"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.prod
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.tag.outputs.image_tag }}
+          platforms: linux/amd64,linux/arm64/v8
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Encode docker-compose file
+        id: compose
+        shell: bash
+        run: |
+          if [ ! -f docker-compose.yml ]; then
+            echo "Error: docker-compose.yml not found in repository."
+            exit 1
+          fi
 
-      # Compose file + nginx conf + docker/ scripts live in the repo and get
-      # synced to the server on every deploy, so the remote directory can
-      # never drift from what's in git. .env.prod is NOT synced — it stays
-      # on the server and is managed manually (it holds secrets).
-      - name: Sync compose files to server
-        uses: appleboy/scp-action@v0.1.5
+          COMPOSE_B64=$(base64 -w 0 docker-compose.yml)
+
+          echo "b64=$COMPOSE_B64" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare env_secrets payload
+        id: prepare_secrets
+        shell: bash
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+        run: |
+          JSON="{}"
+
+          if [ -n "$DJANGO_SECRET_KEY" ]; then
+            JSON=$(echo "$JSON" | jq \
+              --arg key "DJANGO_SECRET_KEY" \
+              --arg value "$DJANGO_SECRET_KEY" \
+              '.[$key] = $value')
+          fi
+
+          if [[ "${{ steps.env.outputs.env }}" == "stage" ]]; then
+            SYSTEM_BASE_URL="stage-invoicing.dimeconsultants.africa"
+          else
+            SYSTEM_BASE_URL="invoicing.dimeconsultants.africa"
+          fi
+
+          JSON=$(echo "$JSON" | jq \
+            --arg key "SYSTEM_BASE_URL" \
+            --arg value "$SYSTEM_BASE_URL" \
+            '.[$key] = $value')
+
+          COMPACT=$(echo "$JSON" | jq -c '.')
+
+          {
+            echo "secrets_json<<EOF"
+            echo "$COMPACT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare deployment payload
+        id: payload
+        shell: bash
+        env:
+          APP_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          ENV_NAME: ${{ steps.env.outputs.env }}
+          SHA: ${{ github.sha }}
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+          DOCKER_COMPOSE_B64: ${{ steps.compose.outputs.b64 }}
+          ENV_SECRETS_JSON: ${{ steps.prepare_secrets.outputs.secrets_json }}
+        run: |
+          PAYLOAD=$(jq -nc \
+            --arg app_repo "$APP_REPO" \
+            --arg branch "$BRANCH" \
+            --arg env "$ENV_NAME" \
+            --arg sha "$SHA" \
+            --arg image_tag "$IMAGE_TAG" \
+            --arg docker_compose_b64 "$DOCKER_COMPOSE_B64" \
+            --argjson env_secrets "$ENV_SECRETS_JSON" \
+            '{
+              app_repo: $app_repo,
+              branch: $branch,
+              env: $env,
+              sha: $sha,
+              image_tag: $image_tag,
+              docker_compose_b64: $docker_compose_b64,
+              env_secrets: $env_secrets
+            }')
+
+          {
+            echo "client_payload<<EOF"
+            echo "$PAYLOAD"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate Infra PAT
+        env:
+          INFRA_PAT: ${{ secrets.INFRA_PAT }}
+        run: |
+          if [ -z "$INFRA_PAT" ]; then
+            echo "Error: INFRA_PAT is missing."
+            exit 1
+          fi
+          echo "Infra PAT is configured."
+
+      - name: Trigger deployment in Infra repository
+        uses: peter-evans/repository-dispatch@v4
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "docker-compose.prod.yml,nginx/,docker/"
-          target: "/home/issa/Dime-HR-Payroll"
-          timeout: 120s
-
-      - name: Deploy on remote
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          command_timeout: 15m
-          envs: IMAGE_TAG
-          script: |
-            set -e
-            cd /home/issa/Dime-HR-Payroll
-            export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
-            export IMAGE_NAME="ghcr.io/kib4n4/dime-hr-payroll"
-            export GHCR_USERNAME="${{ github.actor }}"
-            export GHCR_PAT="${{ secrets.GHCR_PAT }}"
-
-            echo "Deploying tag: ${IMAGE_TAG}"
-
-            # ── 0. Authenticate to GHCR so the server can pull the image ────
-            # The build job's GITHUB_TOKEN is scoped to that run only — the
-            # server needs its own credentials to pull afterward, via a PAT
-            # with read:packages scope.
-            echo "${GHCR_PAT}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
-
-            # ── 1. Free disk space if low (less than 2GB free) ──────────────
-            FREE_KB=$(df / | awk 'NR==2 {print $4}')
-            if [ "$FREE_KB" -lt 2097152 ]; then
-              echo "Low disk space — pruning Docker..."
-              timeout 120 docker system prune -af
-            fi
-
-            # ── 2. Backup DB before deploy (skip if DB not running) ──────────
-            # DB_USER / DB_NAME are pulled directly out of .env.prod without
-            # sourcing the whole file as shell — values in .env.prod can
-            # contain characters (!, [, ], {, }, %, etc.) that break a plain
-            # `. ./.env.prod`, since bash tries to interpret them.
-            DB_USER=$(grep -E '^DB_USER=' .env.prod | head -n1 | cut -d '=' -f2-)
-            DB_NAME=$(grep -E '^DB_NAME=' .env.prod | head -n1 | cut -d '=' -f2-)
-            BACKUP_DIR=/home/issa/backups/db
-            mkdir -p "$BACKUP_DIR"
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-            if docker compose -f docker-compose.prod.yml ps db 2>/dev/null | grep -q "healthy"; then
-              echo "Backing up database..."
-              timeout 120 docker compose -f docker-compose.prod.yml exec -T db pg_dump \
-                -U "${DB_USER}" "${DB_NAME}" \
-                | gzip > "$BACKUP_DIR/backup_${TIMESTAMP}.sql.gz"
-              ls -tp "$BACKUP_DIR"/*.sql.gz | grep -v '/$' | tail -n +8 | xargs -r rm --
-              echo "Backup complete."
-            else
-              echo "DB not running — skipping backup (first deploy or after prune)."
-            fi
-
-            # ── 3. Pull the exact tagged image ────────────────────────────────
-            echo "Pulling ${IMAGE_NAME}:${IMAGE_TAG}..."
-            timeout 300 docker pull "${IMAGE_NAME}:${IMAGE_TAG}"
-            docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:latest"
-
-            # ── 4. Restart everything ─────────────────────────────────────────
-            # Migrations + collectstatic + superuser creation already run
-            # inline in docker/entrypoint.prod.sh when `web` starts, so a
-            # separate one-shot migrate step isn't needed here. `web` will
-            # block briefly on startup running them before gunicorn execs.
-            echo "Restarting services..."
-            timeout 300 docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            # ── 5. Give web a moment to come up, then show its recent logs ───
-            # No health endpoint exists yet, so we can't poll for "healthy".
-            # This just gives a short grace period and surfaces the latest
-            # logs so a broken deploy is visible in the Actions run output
-            # instead of silently succeeding.
-            sleep 15
-            echo "Recent web logs:"
-            docker compose -f docker-compose.prod.yml logs --tail=50 web
-
-            echo "Deploy complete. Live tag: ${IMAGE_TAG}"
+          token: ${{ secrets.INFRA_PAT }}
+          repository: dime-consultants/infrastructure
+          event-type: deploy-app
+          client-payload: ${{ steps.payload.outputs.client_payload }}
