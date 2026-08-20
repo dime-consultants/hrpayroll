@@ -109,7 +109,7 @@ else:
             'NAME': config('DATABASE_DB', default='hr_payroll'),
             'USER': config('DATABASE_USER', default='hr_payroll_user'),
             'PASSWORD': config('DATABASE_PASSWORD', default='securepassword'),
-            'HOST': config('DATABASE_HOST', default='postgres'),
+            'HOST': config('DATABASE_HOST', default='localhost'),
             'PORT': config('DATABASE_PORT', default='5432'),
             'CONN_MAX_AGE': 60,
             'OPTIONS': {
