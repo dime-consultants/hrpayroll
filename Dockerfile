@@ -36,4 +36,4 @@ USER appuser
 EXPOSE 8000
 
 CMD ["sh", "-c", "python manage.py migrate && \
-                  daphne -b 0.0.0.0 -p 8000 config.asgi:application"]
+                  daphne -b 0.0.0.0 -p 8000 hr_payroll.asgi:application"]
