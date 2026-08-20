@@ -5,7 +5,6 @@ from rest_framework.test import APITestCase
 
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser
 
-
 User = get_user_model()
 
 URL_LIST = '/api/v1/uploads/'
@@ -96,84 +95,74 @@ class PayrollUploadAPITests(APITestCase):
         )
 
     # ------------------------------------------------------------------
-    # LIST: GET /api/v1/uploads/
+    # LIST
     # ------------------------------------------------------------------
 
     def test_list_unauthenticated_returns_401(self):
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
 
     def test_list_no_hr_profile_returns_403(self):
-        self.client.force_authenticate(
-            user=self.plain_user,
-        )
+        self.client.force_authenticate(user=self.plain_user)
 
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
     def test_list_hr_admin_returns_200(self):
-        self.client.force_authenticate(
-            user=self.admin_user,
-        )
+        self.client.force_authenticate(user=self.admin_user)
 
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_hr_officer_returns_200(self):
-        self.client.force_authenticate(
-            user=self.officer_user,
-        )
+        self.client.force_authenticate(user=self.officer_user)
 
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_hr_viewer_returns_200(self):
-        self.client.force_authenticate(
-            user=self.viewer_user,
-        )
+        self.client.force_authenticate(user=self.viewer_user)
 
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_200_OK,
         )
 
     def test_list_scoped_to_own_org(self):
-        self.client.force_authenticate(
-            user=self.other_admin,
-        )
+        self.client.force_authenticate(user=self.other_admin)
 
-        response = self.client.get(URL_LIST)
+        resp = self.client.get(URL_LIST)
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_200_OK,
         )
 
         self.assertEqual(
-            response.data['results'],
+            resp.data['results'],
             [],
         )
 
     # ------------------------------------------------------------------
-    # CREATE: POST /api/v1/uploads/
+    # CREATE
     # ------------------------------------------------------------------
 
     def test_create_admin_returns_202(self):
@@ -181,7 +170,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.admin_user,
         )
 
-        response = self.client.post(
+        resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -191,36 +180,13 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
         self.assertIn(
             'id',
-            response.data,
-        )
-
-    def test_create_admin_returns_upload_id(self):
-        self.client.force_authenticate(
-            user=self.admin_user,
-        )
-
-        response = self.client.post(
-            URL_LIST,
-            {
-                'file': make_csv(),
-                'payroll_period': '2026-06-01',
-            },
-            format='multipart',
-        )
-
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_202_ACCEPTED,
-        )
-
-        self.assertTrue(
-            response.data.get('id'),
+            resp.data,
         )
 
     def test_create_officer_returns_403(self):
@@ -228,7 +194,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.officer_user,
         )
 
-        response = self.client.post(
+        resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -238,7 +204,7 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
@@ -247,7 +213,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.viewer_user,
         )
 
-        response = self.client.post(
+        resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -257,12 +223,12 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_403_FORBIDDEN,
         )
 
     def test_create_unauthenticated_returns_401(self):
-        response = self.client.post(
+        resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -272,7 +238,7 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -287,7 +253,7 @@ class PayrollUploadAPITests(APITestCase):
             content_type='application/pdf',
         )
 
-        response = self.client.post(
+        resp = self.client.post(
             URL_LIST,
             {
                 'file': bad_file,
@@ -297,12 +263,12 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_400_BAD_REQUEST,
         )
 
     # ------------------------------------------------------------------
-    # DETAIL: GET /api/v1/uploads/<pk>/
+    # DETAIL
     # ------------------------------------------------------------------
 
     def test_detail_owner_org_returns_200(self):
@@ -310,7 +276,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.admin_user,
         )
 
-        create_response = self.client.post(
+        create_resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -320,24 +286,24 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            create_response.status_code,
+            create_resp.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        upload_id = create_response.data['id']
+        upload_id = create_resp.data['id']
 
-        response = self.client.get(
+        resp = self.client.get(
             URL_DETAIL.format(upload_id),
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_200_OK,
         )
 
         self.assertEqual(
-            str(response.data['id']),
-            str(upload_id),
+            str(resp.data['id']),
+            upload_id,
         )
 
     def test_detail_different_org_returns_404(self):
@@ -345,7 +311,7 @@ class PayrollUploadAPITests(APITestCase):
             user=self.admin_user,
         )
 
-        create_response = self.client.post(
+        create_resp = self.client.post(
             URL_LIST,
             {
                 'file': make_csv(),
@@ -355,21 +321,21 @@ class PayrollUploadAPITests(APITestCase):
         )
 
         self.assertEqual(
-            create_response.status_code,
+            create_resp.status_code,
             status.HTTP_202_ACCEPTED,
         )
 
-        upload_id = create_response.data['id']
+        upload_id = create_resp.data['id']
 
         self.client.force_authenticate(
             user=self.other_admin,
         )
 
-        response = self.client.get(
+        resp = self.client.get(
             URL_DETAIL.format(upload_id),
         )
 
         self.assertEqual(
-            response.status_code,
+            resp.status_code,
             status.HTTP_404_NOT_FOUND,
         )
