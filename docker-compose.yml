@@ -27,7 +27,7 @@ networks:
     external: true
 
 services:
-  invoicing:
+  hr:
     image: *app-image
     container_name: ${SHARED_ENV}_hr_app
     labels:
