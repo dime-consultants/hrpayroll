@@ -224,15 +224,13 @@ class CustomerRegistrationAdminActionTests(TestCase):
     @patch('apps.customers.tasks.register_borrower_task.delay')
     @patch('apps.api.lms_client.get_customer_exclusive')
     def test_reprocess_registrations_skips_when_already_active_in_lms(self, mock_lookup, mock_delay):
-        # LMS actually returns "Active" (capitalized) from customer-exclusive-details —
-        # the match must be case-insensitive.
         mock_lookup.return_value = {'status': 'Active'}
         self.model_admin.reprocess_registrations(
             self._request(), CustomerRegistration.objects.filter(id=self.registration.id),
         )
 
         self.registration.refresh_from_db()
-        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_FAILED)
+        self.assertEqual(self.registration.status, CustomerRegistration.STATUS_ACTIVE)  
         mock_delay.assert_not_called()
 
     @patch('apps.customers.tasks.register_borrower_task.delay')

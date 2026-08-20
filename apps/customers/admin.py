@@ -223,25 +223,21 @@ class CustomerRegistrationAdmin(ModelAdmin):
         from apps.api.lms_client import get_customer_exclusive
 
         LMS_STATUS_MAP = {
-            'Active':   CustomerRegistration.STATUS_ACTIVE,
-            'Inactive': CustomerRegistration.STATUS_FAILED,
-            'Pending':  CustomerRegistration.STATUS_PROCESSING,
+            'active':   CustomerRegistration.STATUS_ACTIVE,
+            'inactive': CustomerRegistration.STATUS_FAILED,
+            'pending':  CustomerRegistration.STATUS_PROCESSING,
         }
 
-        # ── Step 1: resolve LMS status for each registration via phone_number ──
+        # ── Step 1: resolve LMS record for each registration via phone_number ──
         lms_statuses = {}
         for registration in queryset:
             if not registration.phone_number:
                 lms_statuses[registration.id] = None
                 continue
-
             result = get_customer_exclusive(registration.phone_number)
-            if result and result.get('code') == '200.001':
-                lms_statuses[registration.id] = result.get('data', {}).get('status')
-            else:
-                lms_statuses[registration.id] = None
+            lms_statuses[registration.id] = result.get('status') if result else None
 
-        # ── Step 2: apply resolved statuses ───────────────────────────────
+        # ── Step 2: apply resolved statuses ───────────────────────────────────
         updated = 0
         skipped = 0
 
@@ -256,7 +252,7 @@ class CustomerRegistrationAdmin(ModelAdmin):
             lms_status_raw = lms_statuses.get(registration.id)
 
             if lms_status_raw:
-                mapped = LMS_STATUS_MAP.get(lms_status_raw)
+                mapped = LMS_STATUS_MAP.get(lms_status_raw.lower())
                 if mapped:
                     registration.status = mapped
                 else:
@@ -266,13 +262,15 @@ class CustomerRegistrationAdmin(ModelAdmin):
                         lms_status_raw, registration.id,
                     )
                     registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
+                    registration.failure_reason = ''
                     registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
             else:
-                # No LMS record found — reset for a fresh approval + registration attempt
+                # No LMS record — reset for a fresh approval + registration attempt
                 registration.status = CustomerRegistration.STATUS_APPROVAL_PENDING
+                registration.failure_reason = ''
                 registration.kyc_documents.update(status=KYCDocument.STATUS_APPROVED)
 
-            registration.save(update_fields=['status'])
+            registration.save(update_fields=['status', 'failure_reason'])
             log.info(
                 'Admin %s reprocessed customer registration %s → %s',
                 request.user, registration.id, registration.status,
