@@ -29,15 +29,12 @@ class PayrollUploadAPITests(APITestCase):
             name='Test Corp',
             code='TESTCORP',
         )
+
         self.other_org = CheckoffOrganizationMirror.objects.create(
             lms_id='lms-test-002',
             name='Other Corp',
             code='OTHERCORP',
         )
-
-        # create_user returns (User, users.HRUser) — unpack and ignore the users-app HRUser.
-        # We create apps.organizations.HRUser separately so the API middleware can find it
-        # via request.user.hr_profile (related_name on apps.organizations.HRUser).
 
         self.admin_user, _ = User.objects.create_user(
             email='admin@testcorp.com',
@@ -45,7 +42,12 @@ class PayrollUploadAPITests(APITestCase):
             first_name='Admin',
             last_name='User',
         )
-        HRUser.objects.create(user=self.admin_user, organization=self.org, role='admin')
+
+        HRUser.objects.create(
+            user=self.admin_user,
+            organization=self.org,
+            role='admin',
+        )
 
         self.officer_user, _ = User.objects.create_user(
             email='officer@testcorp.com',
@@ -53,7 +55,12 @@ class PayrollUploadAPITests(APITestCase):
             first_name='Officer',
             last_name='User',
         )
-        HRUser.objects.create(user=self.officer_user, organization=self.org, role='officer')
+
+        HRUser.objects.create(
+            user=self.officer_user,
+            organization=self.org,
+            role='officer',
+        )
 
         self.viewer_user, _ = User.objects.create_user(
             email='viewer@testcorp.com',
@@ -61,9 +68,13 @@ class PayrollUploadAPITests(APITestCase):
             first_name='Viewer',
             last_name='User',
         )
-        HRUser.objects.create(user=self.viewer_user, organization=self.org, role='viewer')
 
-        # User with no apps.organizations.HRUser profile — should be denied
+        HRUser.objects.create(
+            user=self.viewer_user,
+            organization=self.org,
+            role='viewer',
+        )
+
         self.plain_user, _ = User.objects.create_user(
             email='plain@testcorp.com',
             password='plainpass1',
@@ -71,139 +82,290 @@ class PayrollUploadAPITests(APITestCase):
             last_name='User',
         )
 
-        # Admin in a different org — used for cross-org isolation checks
         self.other_admin, _ = User.objects.create_user(
             email='admin@othercorp.com',
             password='adminpass2',
             first_name='Other',
             last_name='Admin',
         )
-        HRUser.objects.create(user=self.other_admin, organization=self.other_org, role='admin')
 
-    # ─── LIST  GET /uploads/ ──────────────────────────────────────────
+        HRUser.objects.create(
+            user=self.other_admin,
+            organization=self.other_org,
+            role='admin',
+        )
 
     def test_list_unauthenticated_returns_401(self):
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
     def test_list_no_hr_profile_returns_403(self):
         self.client.force_authenticate(user=self.plain_user)
+
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_list_hr_admin_returns_200(self):
         self.client.force_authenticate(user=self.admin_user)
+
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_200_OK,
+        )
 
     def test_list_hr_officer_returns_200(self):
         self.client.force_authenticate(user=self.officer_user)
+
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_200_OK,
+        )
 
     def test_list_hr_viewer_returns_200(self):
         self.client.force_authenticate(user=self.viewer_user)
+
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_200_OK,
+        )
 
     def test_list_scoped_to_own_org(self):
-        # Admin from other org should see 0 uploads from this org
         self.client.force_authenticate(user=self.other_admin)
+
         resp = self.client.get(URL_LIST)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data['results'], [])
 
-    # ─── CREATE  POST /uploads/ ───────────────────────────────────────
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_200_OK,
+        )
 
-    @patch('apps.repayments.tasks.parse_payroll_upload')
+        self.assertEqual(
+            resp.data['results'],
+            [],
+        )
+
+    @patch('apps.api.views.parse_payroll_upload')
     def test_create_admin_returns_202(self, mock_task):
-        mock_task.delay.return_value = MagicMock(id='fake-task-id')
-        self.client.force_authenticate(user=self.admin_user)
+        mock_task.delay.return_value = MagicMock(
+            id='fake-task-id',
+        )
+
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
         resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_202_ACCEPTED,
+        )
+
         mock_task.delay.assert_called_once()
 
-    @patch('apps.repayments.tasks.parse_payroll_upload')
+    @patch('apps.api.views.parse_payroll_upload')
     def test_create_triggers_celery_task(self, mock_task):
-        mock_task.delay.return_value = MagicMock(id='fake-task-id')
-        self.client.force_authenticate(user=self.admin_user)
-        self.client.post(
+        mock_task.delay.return_value = MagicMock(
+            id='fake-task-id',
+        )
+
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_202_ACCEPTED,
+        )
+
         args = mock_task.delay.call_args[0]
-        # First arg is the upload UUID (a non-empty string)
-        self.assertTrue(len(args[0]) > 0)
+
+        self.assertTrue(
+            len(args[0]) > 0,
+        )
 
     def test_create_officer_returns_403(self):
-        self.client.force_authenticate(user=self.officer_user)
+        self.client.force_authenticate(
+            user=self.officer_user,
+        )
+
         resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_create_viewer_returns_403(self):
-        self.client.force_authenticate(user=self.viewer_user)
+        self.client.force_authenticate(
+            user=self.viewer_user,
+        )
+
         resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_create_unauthenticated_returns_401(self):
         resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
     def test_create_rejects_non_spreadsheet(self):
-        self.client.force_authenticate(user=self.admin_user)
-        bad_file = SimpleUploadedFile('report.pdf', b'%PDF', content_type='application/pdf')
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        bad_file = SimpleUploadedFile(
+            'report.pdf',
+            b'%PDF',
+            content_type='application/pdf',
+        )
+
         resp = self.client.post(
             URL_LIST,
-            {'file': bad_file, 'payroll_period': '2026-06-01'},
+            {
+                'file': bad_file,
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ─── DETAIL  GET /uploads/<pk>/ ───────────────────────────────────
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
 
-    @patch('apps.repayments.tasks.parse_payroll_upload')
+    @patch('apps.api.views.parse_payroll_upload')
     def test_detail_owner_org_returns_200(self, mock_task):
-        mock_task.delay.return_value = MagicMock(id='fake-task-id')
-        self.client.force_authenticate(user=self.admin_user)
-        create_resp = self.client.post(
-            URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
-            format='multipart',
+        mock_task.delay.return_value = MagicMock(
+            id='fake-task-id',
         )
-        upload_id = create_resp.data['id']
-        resp = self.client.get(URL_DETAIL.format(upload_id))
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(str(resp.data['id']), upload_id)
 
-    @patch('apps.repayments.tasks.parse_payroll_upload')
-    def test_detail_different_org_returns_404(self, mock_task):
-        mock_task.delay.return_value = MagicMock(id='fake-task-id')
-        # Create upload as this org's admin
-        self.client.force_authenticate(user=self.admin_user)
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
         create_resp = self.client.post(
             URL_LIST,
-            {'file': make_csv(), 'payroll_period': '2026-06-01'},
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
             format='multipart',
         )
+
+        self.assertEqual(
+            create_resp.status_code,
+            status.HTTP_202_ACCEPTED,
+        )
+
         upload_id = create_resp.data['id']
-        # Try to access it from another org's admin
-        self.client.force_authenticate(user=self.other_admin)
-        resp = self.client.get(URL_DETAIL.format(upload_id))
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+        resp = self.client.get(
+            URL_DETAIL.format(upload_id),
+        )
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            str(resp.data['id']),
+            upload_id,
+        )
+
+    @patch('apps.api.views.parse_payroll_upload')
+    def test_detail_different_org_returns_404(self, mock_task):
+        mock_task.delay.return_value = MagicMock(
+            id='fake-task-id',
+        )
+
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        create_resp = self.client.post(
+            URL_LIST,
+            {
+                'file': make_csv(),
+                'payroll_period': '2026-06-01',
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(
+            create_resp.status_code,
+            status.HTTP_202_ACCEPTED,
+        )
+
+        upload_id = create_resp.data['id']
+
+        self.client.force_authenticate(
+            user=self.other_admin,
+        )
+
+        resp = self.client.get(
+            URL_DETAIL.format(upload_id),
+        )
+
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
