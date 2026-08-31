@@ -2,7 +2,7 @@ version: "3.9"
 
 x-django-env: &django-env
   DEBUG: "False"
-  DJANGO_SETTINGS_MODULE: config.settings
+  DJANGO_SETTINGS_MODULE: hr_payroll.settings
   SECRET_KEY: ${DJANGO_SECRET_KEY}
 
   DB_NAME: ${DATABASE_DB}
@@ -45,7 +45,7 @@ services:
     labels:
       <<: *common-labels
       observability.component: celery-worker
-    command: celery -A config worker -l INFO
+    command: celery -A hr_payroll worker -l INFO
     environment:
       <<: *django-env
     restart: always
@@ -55,7 +55,7 @@ services:
     labels:
       <<: *common-labels
       observability.component: celery-beat
-    command: celery -A config beat -l INFO
+    command: celery -A hr_payroll beat -l INFO
     environment:
       <<: *django-env
     restart: always
