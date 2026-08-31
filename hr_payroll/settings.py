@@ -393,7 +393,24 @@ SPECTACULAR_SETTINGS={
     "COMPONENT_SPLIT_REQUEST":True,
 }
 
-os.makedirs(BASE_DIR/"logs",exist_ok=True)
+# File logging is opt-in and best-effort: containers should log to stdout, and a
+# read-only or wrong-owner log directory must never crash django.setup().
+LOG_DIR=Path(os.environ.get("LOG_DIR",BASE_DIR/"logs"))
+LOG_TO_FILE=env_bool("LOG_TO_FILE",default=DEBUG)
+
+_log_file_ready=False
+if LOG_TO_FILE:
+    try:
+        os.makedirs(LOG_DIR,exist_ok=True)
+        _probe=LOG_DIR/"hr_payroll.log"
+        with open(_probe,"a"):
+            pass
+        _log_file_ready=True
+    except OSError as exc:
+        import sys
+        print(f"WARNING: file logging disabled ({exc}); logging to console only",file=sys.stderr)
+
+_app_handlers=["console","file"] if _log_file_ready else ["console"]
 
 LOGGING={
     "version":1,
@@ -409,13 +426,6 @@ LOGGING={
             "class":"logging.StreamHandler",
             "formatter":"verbose",
         },
-        "file":{
-            "class":"logging.handlers.RotatingFileHandler",
-            "filename":BASE_DIR/"logs"/"hr_payroll.log",
-            "maxBytes":1024*1024*10,
-            "backupCount":5,
-            "formatter":"verbose",
-        },
     },
     "root":{
         "handlers":["console"],
@@ -423,22 +433,31 @@ LOGGING={
     },
     "loggers":{
         "django":{
-            "handlers":["console","file"],
+            "handlers":_app_handlers,
             "level":"WARNING",
             "propagate":False,
         },
         "apps":{
-            "handlers":["console","file"],
+            "handlers":_app_handlers,
             "level":"DEBUG" if DEBUG else "INFO",
             "propagate":False,
         },
         "celery":{
-            "handlers":["console","file"],
+            "handlers":_app_handlers,
             "level":"INFO",
             "propagate":False,
         },
     },
 }
+
+if _log_file_ready:
+    LOGGING["handlers"]["file"]={
+        "class":"logging.handlers.RotatingFileHandler",
+        "filename":LOG_DIR/"hr_payroll.log",
+        "maxBytes":1024*1024*10,
+        "backupCount":5,
+        "formatter":"verbose",
+    }
 
 if not DEBUG:
     SESSION_COOKIE_SECURE=True

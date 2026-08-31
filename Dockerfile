@@ -28,6 +28,8 @@ COPY --from=builder /usr/src/app /usr/src/app
 COPY --from=builder /usr/src/app/staticfiles /usr/src/app/staticfiles
 
 RUN useradd -m -r appuser && \
+    mkdir -p /usr/src/app/logs && \
+    rm -f /usr/src/app/logs/*.log && \
     chown -R appuser:appuser /usr/src/app && \
     chmod -R 755 /usr/src/app/staticfiles
 
