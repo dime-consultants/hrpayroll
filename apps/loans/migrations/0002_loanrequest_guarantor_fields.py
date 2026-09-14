@@ -22,10 +22,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='loanrequest',
-            index=models.Index(fields=['guarantor_id_number'], name='loanreq_guarantor_id_idx'),
+            index=models.Index(fields=['guarantor_id_number'], name='loans_loanr_guarant_0faa31_idx'),
         ),
         migrations.AddIndex(
             model_name='loanrequest',
-            index=models.Index(fields=['guarantor_phone_number'], name='loanreq_guarantor_ph_idx'),
+            index=models.Index(fields=['guarantor_phone_number'], name='loans_loanr_guarant_1eac14_idx'),
         ),
     ]
