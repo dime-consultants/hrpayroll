@@ -135,6 +135,14 @@ class LoanRequest(BaseModel):
         (STATUS_SKIPPED,              'Skipped'),
     ]
 
+    # Statuses in which a guarantor is still "tied up" on this request —
+    # used by check_single_eligibility to block a guarantor from being
+    # attached to more than one active loan at a time.
+    ACTIVE_GUARANTOR_STATUSES = (
+        STATUS_QUEUED, STATUS_ELIGIBILITY_CHECKING, STATUS_ELIGIBLE,
+        STATUS_PROCESSING, STATUS_SUCCESS,
+    )
+
     upload          = models.ForeignKey(
         LoanRequestUpload, on_delete=models.CASCADE, related_name='loan_requests',
     )
@@ -153,6 +161,8 @@ class LoanRequest(BaseModel):
     )
     row_number      = models.PositiveIntegerField(default=0)
     reference       = models.CharField(max_length=100, blank=True)
+    guarantor_id_number    = models.CharField(max_length=50)
+    guarantor_phone_number = models.CharField(max_length=20)
 
     # Eligibility data fetched from LMS
     loan_limit           = models.DecimalField(
@@ -190,6 +200,8 @@ class LoanRequest(BaseModel):
             models.Index(fields=['phone_number', 'upload']),
             models.Index(fields=['idempotency_key']),
             models.Index(fields=['upload', 'status']),
+            models.Index(fields=['guarantor_id_number']),
+            models.Index(fields=['guarantor_phone_number']),
         ]
 
     def __str__(self):

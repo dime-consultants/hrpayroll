@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 import openpyxl
 from celery import shared_task, chord, group
 from django.db import transaction as db_transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.api.error_handling import ErrorClassification, get_retry_countdown
@@ -18,6 +19,14 @@ COLUMN_ALIASES = {
     'employee_name': ['employee_name', 'name', 'full_name', 'employee'],
     'employee_id':   ['employee_id', 'staff_id', 'payroll_number', 'emp_id'],
     'reference':     ['reference', 'ref', 'note'],
+    'guarantor_id_number': [
+        'guarantor_id_number', 'guarantor_id', 'guarantor_national_id',
+        'guarantor id number', 'guarantor id', 'guarantor national id',
+    ],
+    'guarantor_phone_number': [
+        'guarantor_phone_number', 'guarantor_phone', 'guarantor_mobile',
+        'guarantor phone number', 'guarantor phone', 'guarantor mobile',
+    ],
 }
 
 
@@ -41,7 +50,10 @@ def _parse_excel(file_field):
     headers = [str(h).strip() if h is not None else '' for h in rows[0]]
     col_map = _normalize_headers(headers)
 
-    missing = [c for c in ('phone_number', 'amount') if c not in col_map]
+    missing = [
+        c for c in ('phone_number', 'amount', 'guarantor_id_number', 'guarantor_phone_number')
+        if c not in col_map
+    ]
     if missing:
         return [], [f'Missing required columns: {missing}. Found headers: {headers}']
 
@@ -70,6 +82,15 @@ def _validate_row(row: dict, row_num: int) -> dict:
         amount = Decimal('0')
         errors.append(f'Row {row_num}: invalid amount "{row.get("amount")}"')
 
+    guarantor_id_number = str(row.get('guarantor_id_number') or '').strip()[:50]
+    if not guarantor_id_number:
+        errors.append(f'Row {row_num}: guarantor ID number is required')
+
+    raw_guarantor_phone = str(row.get('guarantor_phone_number') or '').strip()
+    guarantor_phone = normalize_phone(raw_guarantor_phone)
+    if not guarantor_phone or not validate_phone(guarantor_phone):
+        errors.append(f'Row {row_num}: invalid guarantor phone "{raw_guarantor_phone}"')
+
     if errors:
         return {'error': True, 'messages': errors, 'row': row_num}
 
@@ -80,6 +101,8 @@ def _validate_row(row: dict, row_num: int) -> dict:
         'employee_name': str(row.get('employee_name') or '').strip()[:200],
         'employee_id':   str(row.get('employee_id') or '').strip()[:100],
         'reference':     str(row.get('reference') or '').strip()[:100],
+        'guarantor_id_number':    guarantor_id_number,
+        'guarantor_phone_number': guarantor_phone,
     }
 
 
@@ -140,6 +163,8 @@ def parse_loan_upload(self, upload_id: str):
                 employee_id      = result.get('employee_id', ''),
                 requested_amount = result['amount'],
                 reference        = result.get('reference', ''),
+                guarantor_id_number    = result['guarantor_id_number'],
+                guarantor_phone_number = result['guarantor_phone_number'],
                 row_number       = i,
                 status           = LoanRequest.STATUS_QUEUED,
             )
@@ -226,6 +251,26 @@ def check_single_eligibility(self, request_id: str):
 
     req.status = LoanRequest.STATUS_ELIGIBILITY_CHECKING
     req.save(update_fields=['status'])
+
+    # Guarantor gate — a guarantor cannot be tied to more than one active
+    # loan at a time. Checked here (in the background eligibility pipeline)
+    # so it applies uniformly whether the guarantor is already active on a
+    # different upload/batch or elsewhere in the same batch.
+    guarantor_conflict = (
+        LoanRequest.objects
+        .filter(status__in=LoanRequest.ACTIVE_GUARANTOR_STATUSES)
+        .filter(
+            Q(guarantor_id_number=req.guarantor_id_number) |
+            Q(guarantor_phone_number=req.guarantor_phone_number)
+        )
+        .exclude(id=req.id)
+        .exists()
+    )
+    if guarantor_conflict:
+        req.status               = LoanRequest.STATUS_INELIGIBLE
+        req.ineligibility_reason = 'Guarantor is already guaranteeing another active loan.'
+        req.save(update_fields=['status', 'ineligibility_reason'])
+        return 'ineligible:guarantor_conflict'
 
     try:
         balances = get_customer_balances(req.phone_number)

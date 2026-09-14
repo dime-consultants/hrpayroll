@@ -6,6 +6,7 @@ Endpoints:
   GET    /api/customers/registrations/                 → list registrations for the user's org
   GET    /api/customers/registrations/{id}/            → detail, including nested kyc_documents
   GET    /api/customers/registrations/{id}/status/     → lightweight poll endpoint (UI polling)
+  POST   /api/customers/registrations/{id}/sync-status/ → re-fetch this registration's status from the LMS
 """
 import logging
 
@@ -92,3 +93,51 @@ class CustomerRegistrationStatusView(generics.RetrieveAPIView):
     def get_queryset(self):
         org = get_hr_org(self.request)
         return CustomerRegistration.objects.filter(organization=org).prefetch_related('kyc_documents')
+
+
+class CustomerRegistrationSyncStatusView(generics.GenericAPIView):
+    """
+    POST /api/customers/registrations/{id}/sync-status/
+
+    Re-fetches this registration's status from the LMS by phone number
+    (same lookup admin's "reprocess registrations" action uses) and
+    applies it, so HR can refresh a stuck/uncertain registration on demand
+    without waiting for the next admin approval cycle.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class   = CustomerRegistrationSerializer
+
+    def get_queryset(self):
+        org = get_hr_org(self.request)
+        return CustomerRegistration.objects.filter(organization=org).prefetch_related('kyc_documents')
+
+    def post(self, request, *args, **kwargs):
+        from apps.api.lms_client import get_customer_exclusive
+
+        LMS_STATUS_MAP = {
+            'active':   CustomerRegistration.STATUS_ACTIVE,
+            'inactive': CustomerRegistration.STATUS_FAILED,
+            'pending':  CustomerRegistration.STATUS_PROCESSING,
+        }
+
+        registration = self.get_object()
+
+        if not registration.phone_number:
+            return Response(
+                {'detail': 'Registration has no phone number to sync against.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = get_customer_exclusive(registration.phone_number)
+        lms_status_raw = result.get('status') if result else None
+        mapped = LMS_STATUS_MAP.get(lms_status_raw.lower()) if lms_status_raw else None
+
+        if mapped and mapped != registration.status:
+            registration.status = mapped
+            registration.save(update_fields=['status'])
+            log.info(
+                'CustomerRegistrationSyncStatusView: registration=%s synced status -> %s',
+                registration.id, mapped,
+            )
+
+        return Response(CustomerRegistrationSerializer(registration).data)
