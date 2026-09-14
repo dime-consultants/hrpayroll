@@ -44,6 +44,7 @@ class LoanRequestInline(TabularInline):
     extra            = 0
     fields           = (
         'phone_number', 'employee_name', 'requested_amount',
+        'guarantor_id_number', 'guarantor_phone_number',
         'existing_loan_balance', 'accessible_loan_limit',
         'status', 'ineligibility_reason',
     )
@@ -310,11 +311,15 @@ class LoanRequestBatchAdmin(ModelAdmin):
 class LoanRequestAdmin(ModelAdmin):
     list_display = (
         'phone_number', 'employee_name', 'organization',
-        'requested_amount', 'existing_loan_balance', 'new_limit',
+        'requested_amount', 'guarantor_id_number', 'guarantor_phone_number',
+        'existing_loan_balance', 'new_limit',
         'status_badge', 'failure_reason', 'date_created',
     )
     list_filter   = ('status', 'organization', 'upload__loan_period')
-    search_fields = ('phone_number', 'employee_name', 'employee_id')
+    search_fields = (
+        'phone_number', 'employee_name', 'employee_id',
+        'guarantor_id_number', 'guarantor_phone_number',
+    )
     readonly_fields = (
         'id', 'upload', 'organization', 'idempotency_key',
         'accessible_loan_limit', 'existing_loan_balance',
@@ -330,6 +335,7 @@ class LoanRequestAdmin(ModelAdmin):
                 'id', 'upload', 'organization',
                 'phone_number', 'employee_name', 'employee_id',
                 'requested_amount', 'reference', 'row_number',
+                'guarantor_id_number', 'guarantor_phone_number',
             ),
         }),
         ('Eligibility & Limit', {

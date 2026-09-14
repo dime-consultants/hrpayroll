@@ -1479,3 +1479,9 @@ INFO 2026-08-11 15:27:38,481 tasks 15340 19696 register_borrower_task: registrat
 INFO 2026-08-11 15:27:38,498 tasks 15340 19696 register_borrower_task: registration=828df6b2-b242-4e00-9230-38149cfd43db registered lms_customer_id=cust-uuid-2 status=processing
 ERROR 2026-08-11 15:27:38,518 tasks 15340 19696 upload_kyc_documents_task: registration=021d3a34-c274-4a46-976c-5ad7aa77e579 KYC upload FAILED — Bad photo
 INFO 2026-08-11 15:27:38,531 tasks 15340 19696 upload_kyc_documents_task: registration=6921f6f8-7aa2-4f2e-a6a7-3ec61a4c64fb all KYC documents uploaded
+INFO 2026-09-14 10:43:03,959 tasks 29532 8607047232 parse_loan_upload: upload=5aaa6b3f-1350-4af7-b577-d6ece22bc685 created=2 errors=0
+INFO 2026-09-14 10:43:04,030 trace 29532 8607047232 Task apps.loans.tasks.parse_loan_upload[0bcf9810-e31c-426e-8c34-b96427d4732b] succeeded in 0.085207459051162s: None
+INFO 2026-09-14 10:43:14,411 trace 29544 8643485248 Task apps.loans.tasks.check_single_eligibility[eb9ca31c-6ea5-4fa2-887b-cb05f4b3a196] succeeded in 0.020385666051879525s: 'ineligible:guarantor_conflict'
+WARNING 2026-09-14 10:43:40,463 lms_client 29372 13084459008 get_customer_exclusive failed for 254700000001: LMS_CONSUMER_KEY and LMS_CONSUMER_SECRET must be set in .env.prod
+WARNING 2026-09-14 10:43:50,024 lms_client 29372 13084459008 get_customer_exclusive failed for 254700000001: LMS_CONSUMER_KEY and LMS_CONSUMER_SECRET must be set in .env.prod
+INFO 2026-09-14 11:08:23,308 views 30952 12973924352 LoanRequestUpload created: id=021db244-fcdf-424d-af2e-50c5c98c4396 org=TESTORG user=tester@example.com file=individual_loan_request_1789373303271.xlsx
