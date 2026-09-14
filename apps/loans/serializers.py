@@ -71,6 +71,7 @@ class LoanRequestSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'phone_number', 'employee_name', 'employee_id',
             'requested_amount', 'accessible_loan_limit', 'existing_loan_balance',
+            'guarantor_id_number', 'guarantor_phone_number',
             'status', 'ineligibility_reason',
             'lms_loan_id', 'failure_reason', 'attempts',
             'row_number', 'date_created',
