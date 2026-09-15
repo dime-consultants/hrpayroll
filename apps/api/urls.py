@@ -12,6 +12,7 @@ from .views import (
     RepaymentRecordListView,
     HealthCheckView,
 )
+from apps.advertisements.views import AdvertisementDetailView, AdvertisementListCreateView
 
 urlpatterns = [
     path('auth/login/',          HRTokenObtainView.as_view(),           name='token_obtain'),
@@ -34,4 +35,6 @@ urlpatterns = [
     path('batches/<uuid:pk>/',   RepaymentBatchDetailView.as_view(),     name='batch_detail'),
     path('batches/<uuid:pk>/approve/', RepaymentBatchApproveView.as_view(), name='batch_approve'),
     path('records/',             RepaymentRecordListView.as_view(),      name='record_list'),
+    path('advertisements/',      AdvertisementListCreateView.as_view(),  name='advertisement_list_create'),
+    path('advertisements/<uuid:pk>/', AdvertisementDetailView.as_view(), name='advertisement_detail'),
 ]
