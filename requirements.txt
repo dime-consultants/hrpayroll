@@ -177,6 +177,7 @@ redis==7.1.0
 referencing==0.37.0
 regex==2026.1.15
 reportlab==4.4.10
+resend==2.45.0
 requests==2.32.5
 requests-toolbelt==1.0.0
 rpds-py==0.30.0

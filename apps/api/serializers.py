@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 User = get_user_model()
@@ -60,6 +61,34 @@ class HRUserCreateSerializer(serializers.Serializer):
             role=validated_data['role'],
             created_by=request.user,
         )
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Lets a logged-in user update their own first/last name."""
+
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name')
+
+
+class RequestPasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ConfirmPasswordResetSerializer(serializers.Serializer):
+    uid              = serializers.CharField()
+    token            = serializers.CharField()
+    new_password     = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        return data
 
 
 class PayrollUploadSerializer(serializers.ModelSerializer):
