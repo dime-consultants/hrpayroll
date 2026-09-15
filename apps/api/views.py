@@ -1,11 +1,14 @@
 import logging
 from decimal import Decimal
 
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status, filters
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,13 +17,17 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser, AuditLog
 from apps.payroll.models import PayrollUpload, SalaryDeduction
 from apps.repayments.models import RepaymentBatch, RepaymentRecord
+from apps.api.email import send_password_reset_email
 from apps.api.lms_client import get_customer_names_bulk
 
 from .permissions import IsHRUser, IsHRAdmin, BelongsToOrganization
 from .serializers import (
     CheckoffOrganizationSerializer,
+    ConfirmPasswordResetSerializer,
     HRUserSerializer, HRUserCreateSerializer,
     PayrollUploadSerializer, PayrollUploadCreateSerializer,
+    ProfileUpdateSerializer,
+    RequestPasswordResetSerializer,
     SalaryDeductionSerializer,
     RepaymentBatchSerializer, RepaymentRecordSerializer,
     BatchApproveSerializer, DashboardSummarySerializer,
@@ -28,6 +35,7 @@ from .serializers import (
 from .throttles import RepaymentRateThrottle, BurstRepaymentThrottle
 
 log = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class HRTokenObtainView(TokenObtainPairView):
@@ -36,6 +44,75 @@ class HRTokenObtainView(TokenObtainPairView):
 
 class HRTokenRefreshView(TokenRefreshView):
     pass
+
+
+class MeView(APIView):
+    """
+    GET   /api/v1/users/me/ — read your own first/last name.
+    PATCH /api/v1/users/me/ — update your own first/last name.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(ProfileUpdateSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class RequestPasswordResetView(APIView):
+    """
+    POST /api/v1/auth/password/reset/
+
+    Always returns 200 regardless of whether the email matches an account,
+    to avoid leaking which emails are registered.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RequestPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        try:
+            user = User.objects.get(email__iexact=email, is_active=True)
+            token = default_token_generator.make_token(user)
+            reset_url = f'{settings.FRONTEND_URL}/password/reset/confirm?uid={user.pk}&token={token}'
+            send_password_reset_email(user.email, reset_url)
+            log.info('Password reset email queued for User pk=%s', user.pk)
+        except User.DoesNotExist:
+            pass
+
+        return Response(
+            {'detail': 'If an account with that email exists, a reset link has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ConfirmPasswordResetView(APIView):
+    """POST /api/v1/auth/password/reset/confirm/"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ConfirmPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            user = User.objects.get(pk=data['uid'], is_active=True)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, data['token']):
+            return Response({'detail': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(data['new_password'])
+        user.save(update_fields=['password'])
+        log.info('Password reset confirmed for User pk=%s', user.pk)
+        return Response({'detail': 'Password has been reset successfully.'}, status=status.HTTP_200_OK)
 
 
 class OrgScopedMixin:
@@ -146,6 +223,24 @@ class HRUserListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
     def perform_create(self, serializer):
         hr_user = serializer.save()
         self._audit('user_create', hr_user.id, f'Created HR user {hr_user.user.email}')
+
+    def create(self, request, *args, **kwargs):
+        # HRUserCreateSerializer.create() returns an HRUser instance, but its
+        # own declared fields (email, password, ...) are shaped for the write
+        # payload, not for reading one back off that instance — letting DRF's
+        # default create() return `serializer.data` raises AttributeError
+        # *after* the user is already committed, so the request 500s even
+        # though the account was created. Re-serialize with the read
+        # serializer instead, same pattern as PayrollUploadListCreateView.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        # Not calling get_success_headers(serializer.data) here — same reason
+        # as above, it would touch serializer.data and crash the same way.
+        return Response(
+            HRUserSerializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class HRUserDetailView(OrgScopedMixin, generics.RetrieveUpdateDestroyAPIView):

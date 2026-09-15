@@ -129,6 +129,7 @@ class LoanRequestListView(generics.ListAPIView):
         return (
             LoanRequest.objects
             .filter(upload_id=upload_id, organization=org)
+            .prefetch_related('guarantors')
             .order_by('row_number')
         )
 

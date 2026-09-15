@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import LoanRequest, LoanRequestBatch, LoanRequestUpload
+from .models import LoanGuarantor, LoanRequest, LoanRequestBatch, LoanRequestUpload
 
 
 class LoanRequestUploadSerializer(serializers.ModelSerializer):
@@ -65,13 +65,23 @@ class LoanRequestUploadCreateSerializer(serializers.ModelSerializer):
         return upload
 
 
+class LoanGuarantorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = LoanGuarantor
+        fields = ('id_number', 'phone_number', 'order')
+        read_only_fields = fields
+
+
 class LoanRequestSerializer(serializers.ModelSerializer):
+    guarantors      = LoanGuarantorSerializer(many=True, read_only=True)
+    product_display = serializers.CharField(source='get_product_display', read_only=True)
+
     class Meta:
         model  = LoanRequest
         fields = (
             'id', 'phone_number', 'employee_name', 'employee_id',
             'requested_amount', 'accessible_loan_limit', 'existing_loan_balance',
-            'guarantor_id_number', 'guarantor_phone_number',
+            'guarantors', 'product', 'product_display',
             'status', 'ineligibility_reason',
             'lms_loan_id', 'failure_reason', 'attempts',
             'row_number', 'date_created',
