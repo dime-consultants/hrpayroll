@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.organizations.models import CheckoffOrganizationMirror, HRUser, AuditLog
@@ -30,8 +31,16 @@ from .throttles import RepaymentRateThrottle, BurstRepaymentThrottle
 log = logging.getLogger(__name__)
 
 
+class HRTokenObtainSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token["is_superuser"] = user.is_superuser
+        return token
+
+
 class HRTokenObtainView(TokenObtainPairView):
-    pass
+    serializer_class = HRTokenObtainSerializer
 
 
 class HRTokenRefreshView(TokenRefreshView):
