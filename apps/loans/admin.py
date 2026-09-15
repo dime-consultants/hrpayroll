@@ -30,7 +30,7 @@ from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import action, display
 
-from .models import LoanRequest, LoanRequestBatch, LoanRequestUpload
+from .models import LoanGuarantor, LoanRequest, LoanRequestBatch, LoanRequestUpload
 
 log = logging.getLogger(__name__)
 
@@ -44,13 +44,25 @@ class LoanRequestInline(TabularInline):
     extra            = 0
     fields           = (
         'phone_number', 'employee_name', 'requested_amount',
-        'guarantor_id_number', 'guarantor_phone_number',
         'existing_loan_balance', 'accessible_loan_limit',
         'status', 'ineligibility_reason',
     )
     readonly_fields  = fields
     can_delete       = False
     show_change_link = True
+    max_num          = 0
+
+
+# ─────────────────────────────────────────────────────────────
+# Inline: guarantors inside loan request detail
+# ─────────────────────────────────────────────────────────────
+
+class LoanGuarantorInline(TabularInline):
+    model            = LoanGuarantor
+    extra            = 0
+    fields           = ('order', 'id_number', 'phone_number')
+    readonly_fields  = fields
+    can_delete       = False
     max_num          = 0
 
 
@@ -311,14 +323,14 @@ class LoanRequestBatchAdmin(ModelAdmin):
 class LoanRequestAdmin(ModelAdmin):
     list_display = (
         'phone_number', 'employee_name', 'organization',
-        'requested_amount', 'guarantor_id_number', 'guarantor_phone_number',
+        'requested_amount', 'product_badge', 'guarantor_summary',
         'existing_loan_balance', 'new_limit',
         'status_badge', 'failure_reason', 'date_created',
     )
-    list_filter   = ('status', 'organization', 'upload__loan_period')
+    list_filter   = ('status', 'product', 'organization', 'upload__loan_period')
     search_fields = (
         'phone_number', 'employee_name', 'employee_id',
-        'guarantor_id_number', 'guarantor_phone_number',
+        'guarantors__id_number', 'guarantors__phone_number',
     )
     readonly_fields = (
         'id', 'upload', 'organization', 'idempotency_key',
@@ -326,6 +338,7 @@ class LoanRequestAdmin(ModelAdmin):
         'status', 'attempts', 'last_attempt_at', 'lms_response',
         'failure_reason', 'lms_loan_id', 'date_created', 'date_modified',
     )
+    inlines       = [LoanGuarantorInline]
     ordering      = ('-date_created',)
     date_hierarchy = 'date_created'
 
@@ -334,8 +347,7 @@ class LoanRequestAdmin(ModelAdmin):
             'fields': (
                 'id', 'upload', 'organization',
                 'phone_number', 'employee_name', 'employee_id',
-                'requested_amount', 'reference', 'row_number',
-                'guarantor_id_number', 'guarantor_phone_number',
+                'requested_amount', 'product', 'reference', 'row_number',
             ),
         }),
         ('Eligibility & Limit', {
@@ -357,6 +369,27 @@ class LoanRequestAdmin(ModelAdmin):
     )
 
     actions = ['retry_limit_set', 'recheck_single_eligibility', 'mark_skipped']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('guarantors')
+
+    @display(description='Product', ordering='product')
+    def product_badge(self, obj):
+        colours = {
+            LoanRequest.PRODUCT_CASH:          '#10b981',
+            LoanRequest.PRODUCT_PATA_GADGET:   '#3b82f6',
+            LoanRequest.PRODUCT_SHIBA_NA_DIME: '#8b5cf6',
+        }
+        colour = colours.get(obj.product, '#6b7280')
+        return format_html(
+            '<span style="background:{};color:#fff;padding:2px 8px;'
+            'border-radius:4px;font-size:11px">{}</span>',
+            colour, obj.get_product_display(),
+        )
+
+    @display(description='Guarantors')
+    def guarantor_summary(self, obj):
+        return ', '.join(f'{g.id_number} ({g.phone_number})' for g in obj.guarantors.all()) or '—'
 
     @display(description='New Limit')
     def new_limit(self, obj):

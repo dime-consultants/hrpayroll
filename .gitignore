@@ -19,9 +19,9 @@ __pycache__/
 
 # --- Virtual environments ---
 venv/
-.env/
+.env/*
 .venv/
-env/
+env/*
 ENV/
 
 # --- Django / migrations ---
