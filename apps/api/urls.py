@@ -4,6 +4,7 @@ from .views import (
     DashboardView,
     OrganizationDetailView,
     HRUserListCreateView, HRUserDetailView,
+    MeView, RequestPasswordResetView, ConfirmPasswordResetView,
     PayrollUploadListCreateView, PayrollUploadDetailView,
     UploadApprovalCallbackView, PayrollTemplateDownloadView,
     SalaryDeductionListView, SalaryDeductionDetailView,
@@ -11,13 +12,17 @@ from .views import (
     RepaymentRecordListView,
     HealthCheckView,
 )
+from apps.advertisements.views import AdvertisementDetailView, AdvertisementListCreateView
 
 urlpatterns = [
     path('auth/login/',          HRTokenObtainView.as_view(),           name='token_obtain'),
     path('auth/refresh/',        HRTokenRefreshView.as_view(),          name='token_refresh'),
+    path('auth/password/reset/',         RequestPasswordResetView.as_view(), name='password_reset'),
+    path('auth/password/reset/confirm/', ConfirmPasswordResetView.as_view(), name='password_reset_confirm'),
     path('health/',              HealthCheckView.as_view(),              name='health'),
     path('dashboard/',           DashboardView.as_view(),                name='dashboard'),
     path('organization/',        OrganizationDetailView.as_view(),       name='organization_detail'),
+    path('users/me/',            MeView.as_view(),                       name='hr_user_me'),
     path('users/',               HRUserListCreateView.as_view(),         name='hr_user_list_create'),
     path('users/<uuid:pk>/',     HRUserDetailView.as_view(),             name='hr_user_detail'),
     path('uploads/template/',    PayrollTemplateDownloadView.as_view(),  name='upload_template'),
@@ -30,4 +35,6 @@ urlpatterns = [
     path('batches/<uuid:pk>/',   RepaymentBatchDetailView.as_view(),     name='batch_detail'),
     path('batches/<uuid:pk>/approve/', RepaymentBatchApproveView.as_view(), name='batch_approve'),
     path('records/',             RepaymentRecordListView.as_view(),      name='record_list'),
+    path('advertisements/',      AdvertisementListCreateView.as_view(),  name='advertisement_list_create'),
+    path('advertisements/<uuid:pk>/', AdvertisementDetailView.as_view(), name='advertisement_detail'),
 ]

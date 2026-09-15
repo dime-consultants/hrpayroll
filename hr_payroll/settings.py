@@ -68,6 +68,7 @@ LOCAL_APPS=[
     "apps.api",
     "apps.loans",
     "apps.customers",
+    "apps.advertisements",
 ]
 
 INSTALLED_APPS=DJANGO_APPS+THIRD_PARTY_APPS+LOCAL_APPS
@@ -253,6 +254,10 @@ LMS_RETRY_BACKOFF=env_int("LMS_RETRY_BACKOFF",2)
 LMS_REQUEST_POOL_SIZE=env_int("LMS_REQUEST_POOL_SIZE",10)
 LMS_REQUEST_POOL_MAXSIZE=env_int("LMS_REQUEST_POOL_MAXSIZE",20)
 IDEMPOTENCY_KEY_TTL=60*60*24
+
+RESEND_API_KEY=os.environ.get("RESEND_API_KEY","")
+DEFAULT_FROM_EMAIL=os.environ.get("DEFAULT_FROM_EMAIL","noreply@dimeconsultants.africa")
+FRONTEND_URL=os.environ.get("FRONTEND_URL","https://payroll.dimeapp.co.ke")
 
 CORS_ALLOWED_ORIGINS=env_list(
     "CORS_ALLOWED_ORIGINS",

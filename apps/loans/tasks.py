@@ -1,10 +1,11 @@
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 
 import openpyxl
 from celery import shared_task, chord, group
 from django.db import transaction as db_transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.api.error_handling import ErrorClassification, get_retry_countdown
@@ -19,15 +20,30 @@ COLUMN_ALIASES = {
     'employee_name': ['employee_name', 'name', 'full_name', 'employee'],
     'employee_id':   ['employee_id', 'staff_id', 'payroll_number', 'emp_id'],
     'reference':     ['reference', 'ref', 'note'],
-    'guarantor_id_number': [
-        'guarantor_id_number', 'guarantor_id', 'guarantor_national_id',
-        'guarantor id number', 'guarantor id', 'guarantor national id',
-    ],
-    'guarantor_phone_number': [
-        'guarantor_phone_number', 'guarantor_phone', 'guarantor_mobile',
-        'guarantor phone number', 'guarantor phone', 'guarantor mobile',
-    ],
+    'product':       ['product', 'loan_product', 'product_type'],
 }
+
+# Row values that map to each LoanRequest.PRODUCT_* choice — must be kept
+# in sync with LoanRequest.PRODUCT_CHOICES. Matched case-insensitively with
+# underscores/spaces treated the same, so "Pata Gadget", "pata_gadget", and
+# "PATA GADGET" all resolve the same way.
+PRODUCT_ALIASES = {
+    'cash':           'cash',
+    'pata_gadget':    'pata_gadget',
+    'shiba_na_dime':  'shiba_na_dime',
+}
+DEFAULT_PRODUCT = 'cash'
+
+# Matches numbered guarantor columns: guarantor_1_id_number, guarantor 2 id,
+# guarantor_1_national_id, guarantor_1_phone_number, guarantor 2 phone, ...
+# There's no fixed cap on N — a batch can carry as many guarantor_N_*
+# column pairs as the upload needs.
+GUARANTOR_ID_RE    = re.compile(r'^guarantor_(\d+)_(id_number|id|national_id)$')
+GUARANTOR_PHONE_RE = re.compile(r'^guarantor_(\d+)_(phone_number|phone|mobile)$')
+
+
+def _normalize_header_text(h):
+    return re.sub(r'[\s_]+', '_', str(h).strip().lower()).strip('_')
 
 
 def _normalize_headers(headers):
@@ -40,6 +56,24 @@ def _normalize_headers(headers):
     return mapping
 
 
+def _find_guarantor_columns(headers):
+    """Returns {1: {'id': col_idx, 'phone': col_idx}, 2: {...}, ...} for
+    however many guarantor_N_id_number / guarantor_N_phone_number column
+    pairs are present in the header row."""
+    guarantor_cols = {}
+    for i, h in enumerate(headers):
+        normalized = _normalize_header_text(h)
+        id_match = GUARANTOR_ID_RE.match(normalized)
+        if id_match:
+            guarantor_cols.setdefault(int(id_match.group(1)), {})['id'] = i
+            continue
+        phone_match = GUARANTOR_PHONE_RE.match(normalized)
+        if phone_match:
+            guarantor_cols.setdefault(int(phone_match.group(1)), {})['phone'] = i
+    # Only keep positions that have both an id and a phone column.
+    return {n: cols for n, cols in guarantor_cols.items() if 'id' in cols and 'phone' in cols}
+
+
 def _parse_excel(file_field):
     file_field.seek(0)
     wb = openpyxl.load_workbook(file_field, read_only=True, data_only=True)
@@ -49,19 +83,30 @@ def _parse_excel(file_field):
         return [], []
     headers = [str(h).strip() if h is not None else '' for h in rows[0]]
     col_map = _normalize_headers(headers)
+    guarantor_cols = _find_guarantor_columns(headers)
 
-    missing = [
-        c for c in ('phone_number', 'amount', 'guarantor_id_number', 'guarantor_phone_number')
-        if c not in col_map
-    ]
+    missing = [c for c in ('phone_number', 'amount') if c not in col_map]
     if missing:
         return [], [f'Missing required columns: {missing}. Found headers: {headers}']
+    if not guarantor_cols:
+        return [], [
+            f'Missing at least one guarantor column pair (e.g. guarantor_1_id_number, '
+            f'guarantor_1_phone_number). Found headers: {headers}'
+        ]
 
     result = []
     for row in rows[1:]:
         if all(c is None for c in row):
             continue
-        result.append({k: row[v] for k, v in col_map.items() if v < len(row)})
+        parsed = {k: row[v] for k, v in col_map.items() if v < len(row)}
+        parsed['guarantors_raw'] = [
+            {
+                'id_number':    row[cols['id']]    if cols['id']    < len(row) else None,
+                'phone_number': row[cols['phone']] if cols['phone'] < len(row) else None,
+            }
+            for _, cols in sorted(guarantor_cols.items())
+        ]
+        result.append(parsed)
     return result, []
 
 
@@ -82,14 +127,34 @@ def _validate_row(row: dict, row_num: int) -> dict:
         amount = Decimal('0')
         errors.append(f'Row {row_num}: invalid amount "{row.get("amount")}"')
 
-    guarantor_id_number = str(row.get('guarantor_id_number') or '').strip()[:50]
-    if not guarantor_id_number:
-        errors.append(f'Row {row_num}: guarantor ID number is required')
+    raw_product = str(row.get('product') or '').strip()
+    if not raw_product:
+        product = DEFAULT_PRODUCT
+    else:
+        product = PRODUCT_ALIASES.get(_normalize_header_text(raw_product))
+        if product is None:
+            errors.append(
+                f'Row {row_num}: unrecognized product "{raw_product}" '
+                f'(expected Cash, Pata Gadget, or Shiba na Dime)'
+            )
 
-    raw_guarantor_phone = str(row.get('guarantor_phone_number') or '').strip()
-    guarantor_phone = normalize_phone(raw_guarantor_phone)
-    if not guarantor_phone or not validate_phone(guarantor_phone):
-        errors.append(f'Row {row_num}: invalid guarantor phone "{raw_guarantor_phone}"')
+    guarantors = []
+    for position, raw in enumerate(row.get('guarantors_raw') or [], start=1):
+        raw_id    = str(raw.get('id_number') or '').strip()
+        raw_phone = str(raw.get('phone_number') or '').strip()
+        if not raw_id and not raw_phone:
+            continue  # unfilled optional guarantor slot in this row
+        guarantor_id = raw_id[:50]
+        if not guarantor_id:
+            errors.append(f'Row {row_num}: guarantor {position} ID number is required')
+        guarantor_phone = normalize_phone(raw_phone)
+        if not guarantor_phone or not validate_phone(guarantor_phone):
+            errors.append(f'Row {row_num}: invalid guarantor {position} phone "{raw_phone}"')
+        if guarantor_id and guarantor_phone:
+            guarantors.append({'id_number': guarantor_id, 'phone_number': guarantor_phone})
+
+    if not guarantors and not errors:
+        errors.append(f'Row {row_num}: at least one guarantor is required')
 
     if errors:
         return {'error': True, 'messages': errors, 'row': row_num}
@@ -98,11 +163,11 @@ def _validate_row(row: dict, row_num: int) -> dict:
         'error':         False,
         'phone_number':  phone,
         'amount':        amount,
+        'product':       product,
         'employee_name': str(row.get('employee_name') or '').strip()[:200],
         'employee_id':   str(row.get('employee_id') or '').strip()[:100],
         'reference':     str(row.get('reference') or '').strip()[:100],
-        'guarantor_id_number':    guarantor_id_number,
-        'guarantor_phone_number': guarantor_phone,
+        'guarantors':    guarantors,
     }
 
 
@@ -112,7 +177,7 @@ def _validate_row(row: dict, row_num: int) -> dict:
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)
 def parse_loan_upload(self, upload_id: str):
-    from apps.loans.models import LoanRequestUpload, LoanRequest
+    from apps.loans.models import LoanRequestUpload, LoanRequest, LoanGuarantor
 
     try:
         upload = LoanRequestUpload.objects.select_related('organization').get(id=upload_id)
@@ -163,17 +228,39 @@ def parse_loan_upload(self, upload_id: str):
                 employee_id      = result.get('employee_id', ''),
                 requested_amount = result['amount'],
                 reference        = result.get('reference', ''),
-                guarantor_id_number    = result['guarantor_id_number'],
-                guarantor_phone_number = result['guarantor_phone_number'],
+                product          = result['product'],
                 row_number       = i,
                 status           = LoanRequest.STATUS_QUEUED,
             )
             req.idempotency_key = req.build_idempotency_key()
+            req._guarantors_data = result['guarantors']  # consumed below, not a model field
             bulk_requests.append(req)
 
         with db_transaction.atomic():
             LoanRequest.objects.bulk_create(bulk_requests, ignore_conflicts=True)
             rows_created = len(bulk_requests)
+
+            # Only attach guarantors to rows with none yet — bulk_create above
+            # is idempotent via ignore_conflicts (safe to retry this task),
+            # but a second bulk_create of guarantor rows for an
+            # already-processed request would duplicate its guarantors.
+            persisted_ids_by_key = dict(
+                LoanRequest.objects
+                .filter(upload=upload)
+                .annotate(_guarantor_count=Count('guarantors'))
+                .filter(_guarantor_count=0)
+                .values_list('idempotency_key', 'id')
+            )
+            bulk_guarantors = [
+                LoanGuarantor(
+                    loan_request_id=persisted_ids_by_key[req.idempotency_key],
+                    id_number=g['id_number'], phone_number=g['phone_number'], order=position,
+                )
+                for req in bulk_requests
+                if req.idempotency_key in persisted_ids_by_key
+                for position, g in enumerate(req._guarantors_data, start=1)
+            ]
+            LoanGuarantor.objects.bulk_create(bulk_guarantors)
 
         upload.processed_rows = rows_created
         upload.failed_rows    = len(errors)
@@ -240,7 +327,7 @@ def check_loan_eligibility_batch(self, upload_id: str):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)
 def check_single_eligibility(self, request_id: str):
-    from apps.loans.models import LoanRequest
+    from apps.loans.models import LoanRequest, LoanGuarantor
     from apps.api.lms_client import get_customer_balances
 
     try:
@@ -252,23 +339,22 @@ def check_single_eligibility(self, request_id: str):
     req.status = LoanRequest.STATUS_ELIGIBILITY_CHECKING
     req.save(update_fields=['status'])
 
-    # Guarantor gate — a guarantor cannot be tied to more than one active
-    # loan at a time. Checked here (in the background eligibility pipeline)
-    # so it applies uniformly whether the guarantor is already active on a
-    # different upload/batch or elsewhere in the same batch.
-    guarantor_conflict = (
-        LoanRequest.objects
-        .filter(status__in=LoanRequest.ACTIVE_GUARANTOR_STATUSES)
-        .filter(
-            Q(guarantor_id_number=req.guarantor_id_number) |
-            Q(guarantor_phone_number=req.guarantor_phone_number)
-        )
-        .exclude(id=req.id)
+    # Guarantor gate — none of this request's guarantors may already be
+    # tied to another active loan. Checked here (in the background
+    # eligibility pipeline) so it applies uniformly whether a guarantor is
+    # already active on a different upload/batch or elsewhere in this batch.
+    id_numbers, phone_numbers = zip(*req.guarantors.values_list('id_number', 'phone_number')) \
+        if req.guarantors.exists() else ((), ())
+    guarantor_conflict = bool(id_numbers) and (
+        LoanGuarantor.objects
+        .filter(Q(id_number__in=id_numbers) | Q(phone_number__in=phone_numbers))
+        .filter(loan_request__status__in=LoanRequest.ACTIVE_GUARANTOR_STATUSES)
+        .exclude(loan_request_id=req.id)
         .exists()
     )
     if guarantor_conflict:
         req.status               = LoanRequest.STATUS_INELIGIBLE
-        req.ineligibility_reason = 'Guarantor is already guaranteeing another active loan.'
+        req.ineligibility_reason = 'A guarantor on this request is already guaranteeing another active loan.'
         req.save(update_fields=['status', 'ineligibility_reason'])
         return 'ineligible:guarantor_conflict'
 

@@ -143,6 +143,21 @@ class LoanRequest(BaseModel):
         STATUS_PROCESSING, STATUS_SUCCESS,
     )
 
+    # Loan product the employee is requesting. Local classification only —
+    # the LMS's bulk_set_loan_limits call has no product concept, it only
+    # ever raises a phone_number's loan_limit ceiling; the product is
+    # tracked here for HR reporting/filtering and can be wired into the LMS
+    # call later if a product-aware endpoint is ever added there.
+    PRODUCT_CASH           = 'cash'
+    PRODUCT_PATA_GADGET    = 'pata_gadget'
+    PRODUCT_SHIBA_NA_DIME  = 'shiba_na_dime'
+
+    PRODUCT_CHOICES = [
+        (PRODUCT_CASH,          'Cash'),
+        (PRODUCT_PATA_GADGET,   'Pata Gadget'),
+        (PRODUCT_SHIBA_NA_DIME, 'Shiba na Dime'),
+    ]
+
     upload          = models.ForeignKey(
         LoanRequestUpload, on_delete=models.CASCADE, related_name='loan_requests',
     )
@@ -161,8 +176,7 @@ class LoanRequest(BaseModel):
     )
     row_number      = models.PositiveIntegerField(default=0)
     reference       = models.CharField(max_length=100, blank=True)
-    guarantor_id_number    = models.CharField(max_length=50)
-    guarantor_phone_number = models.CharField(max_length=20)
+    product         = models.CharField(max_length=20, choices=PRODUCT_CHOICES, default=PRODUCT_CASH)
 
     # Eligibility data fetched from LMS
     loan_limit           = models.DecimalField(
@@ -200,8 +214,6 @@ class LoanRequest(BaseModel):
             models.Index(fields=['phone_number', 'upload']),
             models.Index(fields=['idempotency_key']),
             models.Index(fields=['upload', 'status']),
-            models.Index(fields=['guarantor_id_number']),
-            models.Index(fields=['guarantor_phone_number']),
         ]
 
     def __str__(self):
@@ -219,6 +231,36 @@ class LoanRequest(BaseModel):
         if not self.idempotency_key:
             self.idempotency_key = self.build_idempotency_key()
         super().save(*args, **kwargs)
+
+
+# ─────────────────────────────────────────────────────────────
+# Guarantor (one loan request can have any number of guarantors,
+# parsed from the upload's numbered guarantor_N_id_number /
+# guarantor_N_phone_number columns)
+# ─────────────────────────────────────────────────────────────
+
+class LoanGuarantor(BaseModel):
+    loan_request = models.ForeignKey(
+        LoanRequest, on_delete=models.CASCADE, related_name='guarantors',
+    )
+    id_number    = models.CharField(max_length=50)
+    phone_number = models.CharField(max_length=20)
+    order        = models.PositiveSmallIntegerField(
+        default=1, help_text='Position from the upload (guarantor_1, guarantor_2, ...).',
+    )
+
+    class Meta:
+        verbose_name        = 'Loan Guarantor'
+        verbose_name_plural = 'Loan Guarantors'
+        ordering            = ('loan_request', 'order')
+        indexes = [
+            models.Index(fields=['id_number']),
+            models.Index(fields=['phone_number']),
+            models.Index(fields=['loan_request']),
+        ]
+
+    def __str__(self):
+        return f'{self.id_number} | {self.phone_number} (for {self.loan_request_id})'
 
 
 # ─────────────────────────────────────────────────────────────
